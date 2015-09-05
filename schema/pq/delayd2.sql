@@ -2,7 +2,12 @@ CREATE TABLE queue (
    queue_id   TEXT PRIMARY KEY
  , worker_id  TEXT NOT NULL
  , release_at TIMESTAMP WITH TIME ZONE NOT NULL
+ , relay_to   TEXT NOT NULL
  , payload    TEXT NOT NULL
+);
+
+CREATE INDEX queue_index ON queue (
+  worker_id, release_at
 );
 
 CREATE TABLE active (
