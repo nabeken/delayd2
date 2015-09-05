@@ -139,6 +139,7 @@ func (w *Worker) handleRelease() {
 		}
 
 		for r, ms := range messagesMap {
+			// FIXME: should be in parallel
 			payloads := make([]string, 0, len(ms))
 			for _, m := range ms {
 				payloads = append(payloads, m.Payload)
