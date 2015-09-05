@@ -16,8 +16,6 @@ INSERT INTO queue VALUES ('queue-5', 'worker-2', now(), 'next', '{"say": "hi"}')
 INSERT INTO queue VALUES ('queue-6', 'worker-3', now(), 'next', '{"say": "hi"}');
 ```
 
-```
-
 Moving to active:
 
 ```sql
