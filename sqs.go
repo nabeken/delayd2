@@ -33,8 +33,8 @@ func NewSQSConsumer(workerID string, db *sql.DB, svc *sqs.SQS, queueName string)
 	}
 	return &SQSConsumer{
 		workerID: workerID,
-		db:    db,
-		queue: q,
+		db:       db,
+		queue:    q,
 	}, nil
 }
 
