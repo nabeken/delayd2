@@ -26,6 +26,21 @@ func New(workerID string, db *sql.DB) *Delayd {
 	}
 }
 
+func (d *Delayd) ResetActive() (int64, error) {
+	ret, err := d.db.Exec(`
+		DELETE
+		FROM
+		  active
+		WHERE
+		  worker_id = $1
+		;
+	`, d.workerID)
+	if err != nil {
+		return 0, err
+	}
+	return ret.RowsAffected()
+}
+
 func (d *Delayd) MarkActive(now time.Time) (int64, error) {
 	ret, err := d.db.Exec(`
 		INSERT

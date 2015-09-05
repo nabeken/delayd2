@@ -50,6 +50,17 @@ WHERE
 ;
 ```
 
+Resetting active messages:
+
+```sql
+DELETE
+FROM
+  active
+WHERE
+  worker_id = 'worker-1'
+;
+```
+
 Deleting queues from active and queue:
 
 ```sql

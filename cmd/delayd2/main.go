@@ -21,7 +21,16 @@ func main() {
 	defer db.Close()
 
 	delayd := delayd2.New("worker-1", db)
-	n, err := delayd.MarkActive(time.Now())
+
+	n, err := delayd.ResetActive()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if n > 0 {
+		fmt.Printf("%d active messages found. resetting...\n", n)
+	}
+
+	n, err = delayd.MarkActive(time.Now())
 	if err != nil {
 		log.Fatal(err)
 	}
