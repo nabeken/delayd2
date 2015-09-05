@@ -12,7 +12,7 @@ type QueueMessage struct {
 	WorkerID  string
 	ReleaseAt time.Time
 	RelayTo   string
-	Payload   []byte
+	Payload   string
 }
 
 // Worker is the delayd2 worker.
@@ -131,7 +131,7 @@ func (w *Worker) handleRelease() {
 
 		var n int
 		for _, m := range messages {
-			fmt.Println(string(m.Payload))
+			fmt.Println(m.Payload)
 			if err := w.driver.RemoveMessage(m.QueueID); err != nil {
 				log.Printf("worker: %s: unable to remove messages from queue", err)
 				continue

@@ -11,7 +11,7 @@ import (
 var ErrMessageDuplicated = errors.New("driver: message is duplicated")
 
 type Driver interface {
-	Enqueue(string, int64, string, []byte) error
+	Enqueue(string, int64, string, string) error
 	ResetActive() (int64, error)
 	MarkActive(time.Time) (int64, error)
 	RemoveMessage(string) error
@@ -30,7 +30,7 @@ func NewDriver(workerID string, db *sql.DB) Driver {
 	}
 }
 
-func (d *pqDriver) Enqueue(queueId string, delay int64, relayTo string, payload []byte) error {
+func (d *pqDriver) Enqueue(queueId string, delay int64, relayTo string, payload string) error {
 	releaseAt := time.Now().Add(time.Duration(delay) * time.Second)
 	_, err := d.db.Exec(`
 		INSERT
