@@ -2,9 +2,10 @@
 package delayd2
 
 import (
-	"fmt"
 	"log"
 	"time"
+
+	"github.com/nabeken/aws-go-sqs/queue"
 )
 
 type QueueMessage struct {
@@ -20,6 +21,7 @@ type Worker struct {
 	id       string
 	driver   Driver
 	consumer *Consumer
+	relay    *Relay
 
 	// signaled from external
 	shutdownCh chan struct{}
@@ -29,11 +31,12 @@ type Worker struct {
 }
 
 // NewWorker creates a new worker.
-func NewWorker(workerID string, driver Driver, consumer *Consumer) *Worker {
+func NewWorker(workerID string, driver Driver, consumer *Consumer, relay *Relay) *Worker {
 	return &Worker{
 		id:       workerID,
 		driver:   driver,
 		consumer: consumer,
+		relay:    relay,
 
 		shutdownCh: make(chan struct{}),
 		stoppedCh:  make(chan struct{}),
@@ -80,7 +83,7 @@ func (w *Worker) handleIncoming() {
 		end := time.Now()
 
 		if err != nil {
-			log.Printf("worker: %s: unable to consume messages", err)
+			log.Printf("worker: unable to consume messages: %s", err)
 			continue
 		}
 
@@ -100,7 +103,7 @@ func (w *Worker) handleMarkActive() {
 		end := time.Now()
 
 		if err != nil {
-			log.Printf("worker: %s: unable to mark messages active", err)
+			log.Printf("worker: unable to mark messages active: %s", err)
 			continue
 		}
 
@@ -125,18 +128,48 @@ func (w *Worker) handleRelease() {
 		end := time.Now()
 
 		if err != nil {
-			log.Printf("worker: %s: unable to retrieve messages to be released", err)
+			log.Printf("worker: unable to retrieve messages to be released: %s", err)
 			continue
 		}
 
 		var n int
+		messagesMap := make(map[string][]*QueueMessage)
 		for _, m := range messages {
-			fmt.Println(m.Payload)
-			if err := w.driver.RemoveMessage(m.QueueID); err != nil {
-				log.Printf("worker: %s: unable to remove messages from queue", err)
-				continue
+			messagesMap[m.RelayTo] = append(messagesMap[m.RelayTo], m)
+		}
+
+		for r, ms := range messagesMap {
+			payloads := make([]string, 0, len(ms))
+			for _, m := range ms {
+				payloads = append(payloads, m.Payload)
 			}
-			n++
+
+			failedIndex := make(map[int]struct{})
+			err := w.relay.Relay(payloads, r)
+			if err != nil {
+				if berrs, ok := queue.IsBatchError(err); ok {
+					for _, berr := range berrs {
+						if berr.SenderFault {
+							// TODO: remove? log?
+							log.Printf("worker: unable to send message batch due to sender's fault: %s", berr.Message)
+						}
+						failedIndex[berr.Index] = struct{}{}
+					}
+				}
+			}
+
+			for i, m := range ms {
+				_, failed := failedIndex[i]
+				if failed {
+					continue
+				}
+
+				if err := w.driver.RemoveMessage(m.QueueID); err != nil {
+					log.Printf("worker: unable to remove messages from queue: %s", err)
+					continue
+				}
+				n++
+			}
 		}
 
 		if n > 0 {

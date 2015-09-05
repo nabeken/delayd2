@@ -39,8 +39,9 @@ func main() {
 	}
 
 	consumer := delayd2.NewConsumer(workerID, drv, q)
+	relay := delayd2.NewRelay(sqsSvc)
 
-	w := delayd2.NewWorker(workerID, drv, consumer)
+	w := delayd2.NewWorker(workerID, drv, consumer, relay)
 	installSigHandler(w)
 
 	if err := w.Run(); err != nil {
