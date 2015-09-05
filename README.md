@@ -1,6 +1,6 @@
 # delayd2
 
-[![Build Status](https://travis-ci.org/nabeken/delayd2.svg?branch=sqs)](https://travis-ci.org/nabeken/delayd2)
+[![Build Status](https://travis-ci.org/nabeken/delayd2.svg)](https://travis-ci.org/nabeken/delayd2)
 [![BSD License](http://img.shields.io/badge/license-BSD-blue.svg)](https://github.com/nabeken/delayd2/blob/master/LICENSE)
 
 delayd2 is an available `setTimeout()` service for scheduling message sends.
