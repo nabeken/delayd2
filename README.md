@@ -7,7 +7,7 @@ delayd2 is an available `setTimeout()` service for scheduling message sends.
 
 delayd2 stores scheduling information on clustered (aka streaming replication) PostgreSQL instances as a stable storage layer. MySQL (or Amazon Aurora) support is also planned.
 
-# Message Format
+## Message Format
 
 Message bodies are forwarded unchanged from received messages after their delay elapses.
 
@@ -16,10 +16,10 @@ All Delayd directives are taken from
 
 ### Required Message Attributes
 
-- delayd2-delay (Integer) Delay time in ms before emitting this message.
-- delayd2-target (string) Target exchange for this message.
+- delayd2-delay (Integer): Delay time in second before emitting this message.
+- delayd2-relay-to (String): Queue name for relaying this message.
 
-## Acknowledgement and License
+# Acknowledgement and License
 
 delayd2 is my whole rework against [nabeken/delayd](https://github.com/nabeken/delayd) which was an fork of [goinstant/delayd](https://github.com/goinstant/delayd).
 

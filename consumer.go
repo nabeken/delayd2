@@ -1,81 +1,71 @@
 package delayd2
 
 import (
-	"database/sql"
 	"errors"
+	"log"
 	"strconv"
-	"time"
 
 	"github.com/aws/aws-sdk-go/service/sqs"
-	"github.com/lib/pq"
 	"github.com/nabeken/aws-go-sqs/queue"
 	"github.com/nabeken/aws-go-sqs/queue/option"
-	"github.com/pborman/uuid"
 )
 
 var ErrInvalidAttributes = errors.New("delayd2: invalid attributes")
 
 const (
 	sqsMessageDurationKey = "delayd2-delay"
-	sqsMessageRelayToKey  = "delayd2-target"
+	sqsMessageRelayToKey  = "delayd2-relay-to"
 )
 
-type SQSConsumer struct {
+// Consumer represents a SQS message consumer.
+type Consumer struct {
 	workerID string
-	db       *sql.DB
+	driver   Driver
 	queue    *queue.Queue
 }
 
-func NewSQSConsumer(workerID string, db *sql.DB, svc *sqs.SQS, queueName string) (*SQSConsumer, error) {
-	q, err := queue.New(svc, queueName)
-	if err != nil {
-		return nil, err
-	}
-	return &SQSConsumer{
+func NewConsumer(workerID string, driver Driver, queue *queue.Queue) *Consumer {
+	return &Consumer{
 		workerID: workerID,
-		db:       db,
-		queue:    q,
-	}, nil
+		driver:   driver,
+		queue:    queue,
+	}
 }
 
-func (c *SQSConsumer) Enqueue(delay int64, relayTo string, payload []byte) error {
-	releaseAt := time.Now().Add(time.Duration(delay) * time.Second)
-	queueId := uuid.New()
-	_, err := c.db.Exec(`
-		INSERT
-		INTO
-		  queue
-		VALUES
-			($1, $2, $3, $4, $5)
-	;`, queueId, c.workerID, releaseAt, relayTo, payload)
-	return err
-}
-
-func (c *SQSConsumer) ConsumeMessages() error {
+// ConsumeMessages consumes messages in SQS queue.
+// It returns the number of consumed message in success.
+func (c *Consumer) ConsumeMessages() (int, error) {
 	messages, err := c.queue.ReceiveMessage(
 		option.MaxNumberOfMessages(10),
 		option.UseAllAttribute(),
 	)
 	if err != nil {
-		return err
+		return 0, err
 	}
+
+	var n int
 	for _, m := range messages {
 		duration, relayTo, err := extractDelayd2MessageAttributes(m)
 		if err != nil {
-			// TODO: log
+			log.Printf("consumer: %s: unable to extract attributes. skipping.", *m.MessageId)
 			continue
 		}
-		if err := c.Enqueue(duration, relayTo, []byte(*m.Body)); err != nil {
-			if perr, ok := err.(*pq.Error); ok && perr.Code.Class() == "23" {
-				// delete immediately if duplicated
-				c.queue.DeleteMessage(m.ReceiptHandle)
-			}
-			// TODO: log
+
+		err = c.driver.Enqueue(*m.MessageId, duration, relayTo, []byte(*m.Body))
+		if err != nil && err != ErrMessageDuplicated {
+			log.Printf("consumer: %s: unable to enqueue this message. skipping", *m.MessageId)
 			continue
 		}
+		if err == ErrMessageDuplicated {
+			// delete immediately if duplicated
+			log.Printf("consumer: %s: %s", *m.MessageId, err)
+		}
+
+		log.Printf("consumer: %s: enqueued", *m.MessageId)
 		c.queue.DeleteMessage(m.ReceiptHandle)
+		n++
 	}
-	return nil
+	return n, nil
 }
 
 func extractDelayd2MessageAttributes(message *sqs.Message) (int64, string, error) {

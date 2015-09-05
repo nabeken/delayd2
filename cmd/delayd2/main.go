@@ -2,15 +2,14 @@ package main
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
 	"os"
-	"time"
 
 	_ "github.com/lib/pq"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/nabeken/aws-go-sqs/queue"
 	"github.com/nabeken/delayd2"
 )
 
@@ -29,50 +28,23 @@ func main() {
 		log.Fatal(err)
 	}
 
-	consumer, err := delayd2.NewSQSConsumer(
-		"worker-1",
-		db,
-		sqs.New(&aws.Config{Region: aws.String("ap-northeast-1")}),
-		queueName,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if err := consumer.ConsumeMessages(); err != nil {
-		log.Fatal(err)
-	}
+	workerID := "worker-1"
 
-	delayd := delayd2.New("worker-1", db)
+	drv := delayd2.NewDriver(workerID, db)
+	sqsSvc := sqs.New(&aws.Config{Region: aws.String("ap-northeast-1")})
 
-	n, err := delayd.ResetActive()
-	if err != nil {
-		log.Fatal(err)
-	}
-	if n > 0 {
-		fmt.Printf("%d active messages found. resetting...\n", n)
-	}
-
-	n, err = delayd.MarkActive(time.Now())
+	q, err := queue.New(sqsSvc, queueName)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if n > 0 {
-		fmt.Printf("%d messages are moved to active\n", n)
-	} else {
-		fmt.Println("no messages are in active")
-		return
-	}
+	consumer := delayd2.NewConsumer(workerID, drv, q)
 
-	activeMessages, err := delayd.GetActiveMessages()
-	if err != nil {
-		log.Fatal(err)
+	w := delayd2.NewWorker(workerID, drv, consumer)
+	installSigHandler(w)
+
+	if err := w.Run(); err != nil {
+		log.Print(err)
 	}
-	for _, m := range activeMessages {
-		fmt.Println(string(m.Payload))
-		if err := delayd.RemoveMessage(m.ID); err != nil {
-			log.Println(err)
-		}
-		fmt.Printf("queue_id %s is removed from the queue\n", m.ID)
-	}
+	log.Println("delayd2: shutdown completed")
 }

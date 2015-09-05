@@ -14,14 +14,8 @@ INSERT INTO queue VALUES ('queue-3', 'worker-1', now(), 'next', '{"say": "hi"}')
 INSERT INTO queue VALUES ('queue-4', 'worker-2', now(), 'next', '{"say": "hi"}');
 INSERT INTO queue VALUES ('queue-5', 'worker-2', now(), 'next', '{"say": "hi"}');
 INSERT INTO queue VALUES ('queue-6', 'worker-3', now(), 'next', '{"say": "hi"}');
+```
 
-SELECT queue_id, payload
-FROM
-  queue
-WHERE
-      worker_id = 'worker-1'
-  AND release_at < now()
-;
 ```
 
 Moving to active:
@@ -30,12 +24,15 @@ Moving to active:
 INSERT
 INTO
   active
-SELECT queue_id, worker_id
+SELECT queue.queue_id, queue.payload
 FROM
   queue
 WHERE
-  worker_id = 'worker-1'
-  AND release_at < now()
+      queue.worker_id = 'worker-1'
+  AND queue.release_at < now()
+  AND NOT EXISTS (
+    SELECT 1 FROM active WHERE queue_id = queue.queue_id
+  )
 ;
 ```
 
