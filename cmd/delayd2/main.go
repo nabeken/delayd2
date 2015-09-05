@@ -4,9 +4,13 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	_ "github.com/lib/pq"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/nabeken/delayd2"
 )
 
@@ -19,6 +23,24 @@ func main() {
 		log.Fatal(err)
 	}
 	defer db.Close()
+
+	queueName := os.Getenv("TEST_SQS_QUEUE_NAME")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	consumer, err := delayd2.NewSQSConsumer(
+		"worker-1",
+		db,
+		sqs.New(&aws.Config{Region: aws.String("ap-northeast-1")}),
+		queueName,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := consumer.ConsumeMessages(); err != nil {
+		log.Fatal(err)
+	}
 
 	delayd := delayd2.New("worker-1", db)
 
@@ -47,7 +69,7 @@ func main() {
 		log.Fatal(err)
 	}
 	for _, m := range activeMessages {
-		fmt.Println(m)
+		fmt.Println(string(m.Payload))
 		if err := delayd.RemoveMessage(m.ID); err != nil {
 			log.Println(err)
 		}
