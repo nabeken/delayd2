@@ -8,6 +8,7 @@ import (
 	"github.com/nabeken/aws-go-sqs/queue"
 )
 
+// QueueMessage is a message queued in the database.
 type QueueMessage struct {
 	QueueID   string
 	WorkerID  string
