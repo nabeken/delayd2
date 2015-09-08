@@ -5,6 +5,9 @@ go: 1.5
 install:
   - go get -v -t ./...
 
+before_script:
+  - ./ci/create-postgres-tables.sh
+
 script:
   - go test ./...
 
