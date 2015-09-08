@@ -101,6 +101,7 @@ func (d *pqDriver) GetActiveMessages() ([]*QueueMessage, error) {
 		  queue INNER JOIN active USING (queue_id)
 		WHERE
 		  queue.worker_id = $1
+		ORDER BY queue.release_at
 		;
 	`, d.workerID)
 
