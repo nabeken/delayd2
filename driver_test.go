@@ -72,6 +72,10 @@ func TestDriver(t *testing.T) {
 		assert.NoError(err)
 		assert.Equal(int64(2), n)
 
+		n, err = drv.MarkActive(now.Add(3 * time.Minute))
+		assert.NoError(err)
+		assert.Equal(int64(0), n)
+
 		n, err = drv.ResetActive()
 		assert.NoError(err)
 		assert.Equal(int64(2), n)
