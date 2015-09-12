@@ -13,11 +13,11 @@ func TestDriver(t *testing.T) {
 
 	drv1 := &pqDriver{
 		workerID: "testing-1",
-		db:       newDriver(),
+		db:       newTestDriver(),
 	}
 	drv2 := &pqDriver{
 		workerID: "testing-2",
-		db:       newDriver(),
+		db:       newTestDriver(),
 	}
 	defer drv1.db.Exec("DELETE FROM queue;")
 
@@ -108,7 +108,7 @@ func TestDriver(t *testing.T) {
 	}
 }
 
-func newDriver() *sql.DB {
+func newTestDriver() *sql.DB {
 	db, err := sql.Open("postgres", "dbname=delayd2-test sslmode=disable")
 	if err != nil {
 		panic(err.Error())
