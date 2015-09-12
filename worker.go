@@ -56,7 +56,7 @@ func (w *Worker) Run() error {
 	log.Printf("worker: %d aborted messages in active queue resetted", n)
 
 	log.Print("worker: starting delayd2 process")
-	go w.handleIncoming()
+	go w.handleConsume()
 	go w.handleMarkActive()
 	go w.handleRelease()
 
@@ -76,11 +76,15 @@ func (w *Worker) Stop() {
 	close(w.shutdownCh)
 }
 
-// handleIncoming consumes messages in SQS.
-func (w *Worker) handleIncoming() {
+func (w *Worker) consume() (int, error) {
+	return w.consumer.ConsumeMessages()
+}
+
+// handleConsume consumes messages in SQS.
+func (w *Worker) handleConsume() {
 	for {
 		begin := time.Now()
-		n, err := w.consumer.ConsumeMessages()
+		n, err := w.consume()
 		end := time.Now()
 
 		if err != nil {
@@ -94,12 +98,16 @@ func (w *Worker) handleIncoming() {
 	}
 }
 
+func (w *Worker) markActive(begin time.Time) (int64, error) {
+	return w.driver.MarkActive(begin)
+}
+
 // handleMarkActive marks coming messages in queue.
 func (w *Worker) handleMarkActive() {
 	for range time.Tick(1 * time.Second) {
 		begin := time.Now()
 
-		n, err := w.driver.MarkActive(begin)
+		n, err := w.markActive(begin)
 
 		end := time.Now()
 
@@ -164,16 +172,17 @@ func (w *Worker) release() (int64, error) {
 		failedIndex := make(map[int]struct{})
 		err := w.relay.Relay(payloads, r)
 		if err != nil {
+			// only print log here in batch operation
+			// You should setup a dead letter queue to detect unrecoverable errors.
 			berrs, batchOk := queue.IsBatchError(err)
 			if !batchOk {
-				return 0, err
+				log.Printf("worker: unable to send message due to non batch error. skipping: %s", err)
+				continue
 			}
 
 			for _, berr := range berrs {
 				if berr.SenderFault {
-					// only print log here
-					// You should setup a dead queue to detect unrecoverable errors.
-					log.Printf("worker: unable to send message batch due to sender's fault: %s", berr.Message)
+					log.Printf("worker: unable to send message due to sender's fault: skipping: %s", berr.Message)
 				}
 				failedIndex[berr.Index] = struct{}{}
 			}
