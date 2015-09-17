@@ -102,6 +102,7 @@ func (d *pqDriver) GetActiveMessages() ([]*QueueMessage, error) {
 		WHERE
 		  queue.worker_id = $1
 		ORDER BY queue.release_at
+		LIMIT 1000
 		;
 	`, d.workerID)
 
