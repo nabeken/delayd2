@@ -52,14 +52,11 @@ func TestWorker(t *testing.T) {
 	consumer := NewConsumer(drv.workerID, drv, q)
 	relay := NewRelay(sqsSvc)
 
-	sender := &Sender{
-		sqsSvc: sqsSvc,
-	}
-
-	if !assert.NoError(sender.SendMessage(queueName, 5, relayTo, "payload-1")) {
+	sender := NewSender(q)
+	if !assert.NoError(sender.SendMessage(5, relayTo, "payload-1")) {
 		return
 	}
-	if !assert.NoError(sender.SendMessage(queueName, 5, noExistRelayTo, "payload-2")) {
+	if !assert.NoError(sender.SendMessage(5, noExistRelayTo, "payload-2")) {
 		return
 	}
 
