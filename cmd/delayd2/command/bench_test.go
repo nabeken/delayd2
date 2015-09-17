@@ -78,13 +78,14 @@ func TestDistributeN(t *testing.T) {
 			Payloads: []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"},
 			TestCase: []TestCase{
 				{
-					N: 5,
+					N: 6,
 					Expected: [][]string{
-						[]string{"1", "2"},
-						[]string{"3", "4"},
-						[]string{"5", "6"},
-						[]string{"7", "8"},
-						[]string{"9", "10"},
+						[]string{"1", "7"},
+						[]string{"2", "8"},
+						[]string{"3", "9"},
+						[]string{"4", "10"},
+						[]string{"5"},
+						[]string{"6"},
 					},
 				},
 			},
