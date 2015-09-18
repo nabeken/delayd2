@@ -173,7 +173,7 @@ func (w *Worker) release() (int64, error) {
 		err := w.relay.Relay(payloads, r)
 		if err != nil {
 			// only print log here in batch operation
-			// You should setup a dead letter queue to detect unrecoverable errors.
+			// TODO: a dead letter queue support
 			berrs, batchOk := queue.IsBatchError(err)
 			if !batchOk {
 				log.Printf("worker: unable to send message due to non batch error. skipping: %s", err)
