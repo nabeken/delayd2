@@ -1,11 +1,14 @@
 package delayd2
 
 import (
+	"errors"
 	"sync"
 
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/nabeken/aws-go-sqs/queue"
 )
+
+var ErrTooManyPayloads = errors.New("relay: too many payloads. Up to 10 payloads can be sent at once")
 
 type Relay struct {
 	sqsSvc *sqs.SQS
@@ -48,6 +51,10 @@ func (r *Relay) retrieveURL(relayTo string) (*string, error) {
 
 // Relay relays payloads to relayTo queue.
 func (r *Relay) Relay(payloads []string, relayTo string) error {
+	if len(payloads) > 10 {
+		return ErrTooManyPayloads
+	}
+
 	url, err := r.retrieveURL(relayTo)
 	if err != nil {
 		return err
