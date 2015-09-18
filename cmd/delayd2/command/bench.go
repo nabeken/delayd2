@@ -226,9 +226,9 @@ func (c *BenchCommand) Help() string {
 }
 
 func DistributeN(nWorkers int, payloads []string) [][]string {
-	if nWorkers > len(payloads) {
+	if plen := len(payloads); nWorkers > plen {
 		// capped to length of payloads
-		nWorkers = len(payloads)
+		nWorkers = plen
 	}
 
 	perWorker := len(payloads) / nWorkers
