@@ -50,7 +50,7 @@ func (r *Relay) retrieveURL(relayTo string) (*string, error) {
 }
 
 // Relay relays payloads to relayTo queue.
-func (r *Relay) Relay(payloads []string, relayTo string) error {
+func (r *Relay) Relay(relayTo string, payloads []string) error {
 	if len(payloads) > 10 {
 		return ErrTooManyPayloads
 	}
