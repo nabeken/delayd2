@@ -3,6 +3,7 @@ package delayd2
 
 import (
 	"log"
+	"runtime"
 	"time"
 
 	"github.com/nabeken/aws-go-sqs/queue"
@@ -56,7 +57,14 @@ func (w *Worker) Run() error {
 	log.Printf("worker: %d aborted messages in active queue resetted", n)
 
 	log.Print("worker: starting delayd2 process")
-	go w.handleConsume()
+
+	// FIXME: provide a way to configure this
+	nCPU := runtime.NumCPU()
+	for i := 0; i < nCPU; i++ {
+		log.Print("worker: launching consumer process")
+		go w.handleConsume()
+	}
+
 	go w.handleMarkActive()
 	go w.handleRelease()
 
@@ -76,7 +84,7 @@ func (w *Worker) Stop() {
 	close(w.shutdownCh)
 }
 
-func (w *Worker) consume() (int, error) {
+func (w *Worker) consume() (int64, error) {
 	return w.consumer.ConsumeMessages()
 }
 
