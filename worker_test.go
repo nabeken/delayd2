@@ -70,7 +70,7 @@ func TestWorker(t *testing.T) {
 		}
 		numMessages += n
 	}
-	if !assert.Equal(numMessages, 2) {
+	if !assert.Equal(int64(2), numMessages) {
 		return
 	}
 
