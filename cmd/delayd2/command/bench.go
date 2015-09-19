@@ -18,15 +18,6 @@ import (
 	"github.com/nabeken/delayd2"
 )
 
-type BenchSendConfig struct {
-	QueueName       string `envconfig:"queue_name"`
-	TargetQueueName string `envconfig:"target_queue_name"`
-	Region          string `envconfig:"region"`
-
-	NumberOfMessages int
-	Concurrency      int
-}
-
 type BenchRecvConfig struct {
 	QueueName string `envconfig:"queue_name"`
 	Region    string `envconfig:"region"`
@@ -117,6 +108,16 @@ func (c *BenchCommand) Recv(args []string) int {
 	return 0
 }
 
+type BenchSendConfig struct {
+	QueueName       string `envconfig:"queue_name"`
+	TargetQueueName string `envconfig:"target_queue_name"`
+	Region          string `envconfig:"region"`
+
+	NumberOfMessages int
+	Concurrency      int
+	Duration         int
+}
+
 func (c *BenchCommand) Send(args []string) int {
 	var config BenchSendConfig
 
@@ -128,6 +129,7 @@ func (c *BenchCommand) Send(args []string) int {
 	cmdFlags := flag.NewFlagSet("batch send", flag.ContinueOnError)
 	cmdFlags.IntVar(&config.NumberOfMessages, "n", 1000, "number of messages")
 	cmdFlags.IntVar(&config.Concurrency, "c", 5, "concurrency")
+	cmdFlags.IntVar(&config.Duration, "d", 10, "duration in second")
 
 	if err := cmdFlags.Parse(args); err != nil {
 		c.Ui.Error(c.Help())
@@ -144,6 +146,7 @@ func (c *BenchCommand) Send(args []string) int {
 	log.Print("bench: --- Configuration ---")
 	log.Printf("bench: Number of messages to send: %d", config.NumberOfMessages)
 	log.Printf("bench: Concurrency of sending: %d", config.Concurrency)
+	log.Printf("bench: Duration of relaying: %d", config.Duration)
 	log.Printf("bench: DELAYD2_QUEUE_NAME=%s", config.QueueName)
 	log.Printf("bench: DELAYD2_TARGET_QUEUE_NAME=%s", config.TargetQueueName)
 
@@ -166,7 +169,7 @@ func (c *BenchCommand) Send(args []string) int {
 			defer wg.Done()
 
 			log.Print("launching worker goroutine")
-			if err := s.SendMessageBatch(0, config.TargetQueueName, t); err != nil {
+			if err := s.SendMessageBatch(config.Duration, config.TargetQueueName, t); err != nil {
 				log.Print(err)
 				return
 			}
