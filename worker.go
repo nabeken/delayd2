@@ -165,48 +165,55 @@ func (w *Worker) release() (int64, error) {
 	}
 
 	var n int64
+
+	// we need QueueMessage to use QueueID to delete from queue
 	messagesMap := make(map[string][]*QueueMessage)
 	for _, m := range messages {
 		messagesMap[m.RelayTo] = append(messagesMap[m.RelayTo], m)
 	}
 
-	for r, ms := range messagesMap {
-		// FIXME: should be in parallel
-		payloads := make([]string, 0, len(ms))
-		for _, m := range ms {
-			payloads = append(payloads, m.Payload)
-		}
-
-		failedIndex := make(map[int]struct{})
-		err := w.relay.Relay(payloads, r)
-		if err != nil {
-			// only print log here in batch operation
-			// TODO: a dead letter queue support
-			berrs, batchOk := queue.IsBatchError(err)
-			if !batchOk {
-				log.Printf("worker: unable to send message due to non batch error. skipping: %s", err)
-				continue
-			}
-
-			for _, berr := range berrs {
-				if berr.SenderFault {
-					log.Printf("worker: unable to send message due to sender's fault: skipping: %s", berr.Message)
-				}
-				failedIndex[berr.Index] = struct{}{}
-			}
-		}
-
-		for i, m := range ms {
-			if _, failed := failedIndex[i]; failed {
-				continue
-			}
-
-			if err := w.driver.RemoveMessage(m.QueueID); err != nil {
-				log.Printf("worker: unable to remove messages from queue: %s", err)
-				continue
-			}
-			n++
-		}
+	for relayTo, ms := range messagesMap {
+		n += w.releaseBatch(relayTo, ms)
 	}
 	return n, nil
+}
+
+func (w *Worker) releaseBatch(relayTo string, messages []*QueueMessage) int64 {
+	payloads := make([]string, 0, len(messages))
+	for _, m := range messages {
+		payloads = append(payloads, m.Payload)
+	}
+
+	var n int64
+	failedIndex := make(map[int]struct{})
+	if err := w.relay.Relay(relayTo, payloads); err != nil {
+		// only print log here in batch operation
+		// TODO: a dead letter queue support
+		berrs, batchOk := queue.IsBatchError(err)
+		if !batchOk {
+			log.Printf("worker: unable to send message due to non batch error. skipping: %s", err)
+			return 0
+		}
+
+		for _, berr := range berrs {
+			if berr.SenderFault {
+				log.Printf("worker: unable to send message due to sender's fault: skipping: %s", berr.Message)
+			}
+			failedIndex[berr.Index] = struct{}{}
+		}
+	}
+
+	for i, m := range messages {
+		if _, failed := failedIndex[i]; failed {
+			continue
+		}
+
+		if err := w.driver.RemoveMessage(m.QueueID); err != nil {
+			log.Printf("worker: unable to remove messages from queue: %s", err)
+			continue
+		}
+		n++
+	}
+
+	return n
 }
