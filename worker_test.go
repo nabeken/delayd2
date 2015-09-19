@@ -62,7 +62,7 @@ func TestWorker(t *testing.T) {
 
 	w := NewWorker(drv.workerID, drv, consumer, relay)
 
-	var numMessages int
+	var numMessages int64
 	for i := 0; i < 2; i++ {
 		n, err := w.consume()
 		if !assert.NoError(err) {
