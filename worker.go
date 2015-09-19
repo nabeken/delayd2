@@ -76,7 +76,7 @@ func (w *Worker) Stop() {
 	close(w.shutdownCh)
 }
 
-func (w *Worker) consume() (int, error) {
+func (w *Worker) consume() (int64, error) {
 	return w.consumer.ConsumeMessages()
 }
 

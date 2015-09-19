@@ -34,7 +34,7 @@ func NewConsumer(workerID string, driver Driver, queue *queue.Queue) *Consumer {
 
 // ConsumeMessages consumes messages in SQS queue.
 // It returns the number of consumed message in success.
-func (c *Consumer) ConsumeMessages() (int, error) {
+func (c *Consumer) ConsumeMessages() (int64, error) {
 	messages, err := c.queue.ReceiveMessage(
 		option.MaxNumberOfMessages(10),
 		option.UseAllAttribute(),
@@ -43,7 +43,9 @@ func (c *Consumer) ConsumeMessages() (int, error) {
 		return 0, err
 	}
 
-	var n int
+	var n int64
+
+	succeededReceiptHandles := make([]*string, 0, len(messages))
 	for _, m := range messages {
 		duration, relayTo, err := extractDelayd2MessageAttributes(m)
 		if err != nil {
@@ -59,11 +61,17 @@ func (c *Consumer) ConsumeMessages() (int, error) {
 		if err == ErrMessageDuplicated {
 			// delete immediately if duplicated
 			log.Printf("consumer: %s: %s", *m.MessageId, err)
+		} else {
+			n++
 		}
 
-		log.Printf("consumer: %s: enqueued", *m.MessageId)
-		c.queue.DeleteMessage(m.ReceiptHandle)
-		n++
+		succeededReceiptHandles = append(succeededReceiptHandles, m.ReceiptHandle)
+	}
+
+	if len(succeededReceiptHandles) > 0 {
+		if err := c.queue.DeleteMessageBatch(succeededReceiptHandles...); err != nil {
+			log.Printf("consumer: unable to delete messages in batch but continuing since messages will appear again: %s", err)
+		}
 	}
 	return n, nil
 }
