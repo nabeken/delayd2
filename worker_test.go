@@ -2,6 +2,7 @@ package delayd2
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -70,7 +71,7 @@ func TestWorker(t *testing.T) {
 		}
 		numMessages += n
 	}
-	if !assert.Equal(numMessages, 2) {
+	if !assert.Equal(int64(2), numMessages) {
 		return
 	}
 
@@ -83,18 +84,73 @@ func TestWorker(t *testing.T) {
 	}
 
 	{
-		n, err := w.release()
+		err := w.release()
 		assert.NoError(err)
-
-		// one of messages has incorrect relayTo so we could release only 1 message
-		assert.Equal(int64(1), n)
 	}
 
 	{
-		n, err := w.release()
+		err := w.release()
 		assert.NoError(err)
+	}
+}
 
-		// no messages released
-		assert.Equal(int64(0), n)
+func TestBuildBatchMap(t *testing.T) {
+	assert := assert.New(t)
+
+	messages := []*QueueMessage{}
+	for i := 0; i < 25; i++ {
+		messages = append(messages, &QueueMessage{
+			RelayTo: "target-1",
+			QueueID: fmt.Sprintf("queue-%d", i),
+			Payload: fmt.Sprintf("payload-%d", i),
+		})
+	}
+
+	messages = append(messages, []*QueueMessage{
+		&QueueMessage{
+			RelayTo: "target-2",
+			QueueID: "queue-26",
+			Payload: "payload-26",
+		},
+		&QueueMessage{
+			RelayTo: "target-2",
+			QueueID: "queue-27",
+			Payload: "payload-27",
+		},
+		&QueueMessage{
+			RelayTo: "target-3",
+			QueueID: "queue-28",
+			Payload: "payload-28",
+		},
+	}...)
+
+	actual := BuildBatchMap(messages)
+	for _, expect := range []struct {
+		RelayTo       string
+		MessagesLen   []int
+		FirstPayloads []string
+	}{
+		{
+			RelayTo:       "target-1",
+			MessagesLen:   []int{10, 10, 5},
+			FirstPayloads: []string{"payload-0", "payload-10", "payload-20"},
+		},
+		{
+			RelayTo:       "target-2",
+			MessagesLen:   []int{2},
+			FirstPayloads: []string{"payload-26"},
+		},
+		{
+			RelayTo:       "target-3",
+			MessagesLen:   []int{1},
+			FirstPayloads: []string{"payload-28"},
+		},
+	} {
+		assert.Len(actual[expect.RelayTo], len(expect.MessagesLen))
+
+		for i := range actual[expect.RelayTo] {
+			assert.Len(actual[expect.RelayTo][i], expect.MessagesLen[i])
+			assert.Equal(expect.FirstPayloads[i], actual[expect.RelayTo][i][0].Payload)
+		}
 	}
 }
