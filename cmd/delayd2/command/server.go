@@ -3,9 +3,14 @@ package command
 import (
 	"database/sql"
 	"errors"
+	"flag"
 	"fmt"
+	"log"
+	"net/http"
 	"strings"
 	"time"
+
+	_ "net/http/pprof"
 
 	_ "github.com/lib/pq"
 
@@ -21,6 +26,8 @@ type ServerConfig struct {
 	DSN       string `envconfig:"dsn"`
 	QueueName string `envconfig:"queue_name"`
 	Region    string `envconfig:"region"`
+
+	EnablePProf bool
 }
 
 type ServerCommand struct {
@@ -35,6 +42,21 @@ func (c *ServerCommand) Run(args []string) int {
 	if err := envconfig.Process("delayd2", &config); err != nil {
 		c.Ui.Error(fmt.Sprintf("Unable to get configuration from envvars: %s", err))
 		return 1
+	}
+
+	cmdFlags := flag.NewFlagSet("server", flag.ContinueOnError)
+	cmdFlags.BoolVar(&config.EnablePProf, "pprof", false, "enable pprof server on 127.0.0.1:6060")
+
+	if err := cmdFlags.Parse(args); err != nil {
+		c.Ui.Error(c.Help())
+		return 1
+	}
+
+	if config.EnablePProf {
+		log.Println("server: launching pprof http server on 127.0.0.1:6060")
+		go func() {
+			log.Println(http.ListenAndServe("127.0.0.1:6060", nil))
+		}()
 	}
 
 	db, err := sql.Open("postgres", config.DSN)
