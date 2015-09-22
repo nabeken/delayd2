@@ -3,6 +3,7 @@ package delayd2
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/lib/pq"
@@ -15,6 +16,7 @@ type Driver interface {
 	ResetActive() (int64, error)
 	MarkActive(time.Time) (int64, error)
 	RemoveMessage(string) error
+	RemoveMessages([]string) error
 	GetActiveMessages() ([]*QueueMessage, error)
 }
 
@@ -94,6 +96,22 @@ func (d *pqDriver) RemoveMessage(queueID string) error {
 	return err
 }
 
+func (d *pqDriver) RemoveMessages(queueIDs []string) error {
+	ids := make([]interface{}, len(queueIDs))
+	for i := range queueIDs {
+		ids[i] = queueIDs[i]
+	}
+
+	_, err := d.db.Exec(`
+		DELETE
+		FROM
+			queue
+		WHERE
+			queue_id IN `+BuildPlaceHolders(len(queueIDs))+`
+	;`, ids...)
+	return err
+}
+
 func (d *pqDriver) GetActiveMessages() ([]*QueueMessage, error) {
 	rows, err := d.db.Query(`
 		SELECT queue.queue_id, queue.worker_id, queue.release_at, queue.relay_to, queue.payload
@@ -102,7 +120,6 @@ func (d *pqDriver) GetActiveMessages() ([]*QueueMessage, error) {
 		WHERE
 		  queue.worker_id = $1
 		ORDER BY queue.release_at
-		LIMIT 1000
 		;
 	`, d.workerID)
 
@@ -123,4 +140,17 @@ func (d *pqDriver) GetActiveMessages() ([]*QueueMessage, error) {
 		return nil, err
 	}
 	return messages, nil
+}
+
+func BuildPlaceHolders(n int) string {
+	if n < 1 {
+		return ""
+	}
+	ret := "($1"
+	if n != 1 {
+		for i := 2; i < n+1; i++ {
+			ret += fmt.Sprintf(", $%d", i)
+		}
+	}
+	return ret + ")"
 }
