@@ -4,6 +4,7 @@ package delayd2
 import (
 	"log"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/nabeken/aws-go-sqs/queue"
@@ -158,6 +159,8 @@ func (w *Worker) handleRelease() {
 }
 
 type releaseJob struct {
+	*sync.WaitGroup
+
 	RelayTo  string
 	Messages []releaseMessage
 }
@@ -178,14 +181,19 @@ func (w *Worker) release() error {
 	// we need QueueID to delete from queue
 	batchMap := BuildBatchMap(messages)
 
+	var wg sync.WaitGroup
 	for relayTo, batchMsgs := range batchMap {
 		for _, rms := range batchMsgs {
+			wg.Add(1)
 			w.relayCh <- releaseJob{
+				WaitGroup: &wg,
+
 				RelayTo:  relayTo,
 				Messages: rms,
 			}
 		}
 	}
+	wg.Wait()
 	return nil
 }
 
@@ -198,6 +206,7 @@ func (w *Worker) relayWorker() {
 		if n > 0 {
 			log.Printf("worker: %d messages relayed in %s", n, end.Sub(begin))
 		}
+		rj.Done()
 	}
 	log.Print("relayworker: closed")
 }
