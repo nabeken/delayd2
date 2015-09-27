@@ -15,7 +15,6 @@ type Driver interface {
 	Enqueue(string, int64, string, string) error
 	ResetActive() (int64, error)
 	MarkActive(time.Time) (int64, error)
-	RemoveMessage(string) error
 	RemoveMessages([]string) error
 	GetActiveMessages() ([]*QueueMessage, error)
 }
@@ -83,17 +82,6 @@ func (d *pqDriver) MarkActive(now time.Time) (int64, error) {
 		return 0, err
 	}
 	return ret.RowsAffected()
-}
-
-func (d *pqDriver) RemoveMessage(queueID string) error {
-	_, err := d.db.Exec(`
-		DELETE
-		FROM
-			queue
-		WHERE
-			queue_id = $1
-	;`, queueID)
-	return err
 }
 
 func (d *pqDriver) RemoveMessages(queueIDs []string) error {

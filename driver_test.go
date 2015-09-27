@@ -99,7 +99,7 @@ func TestDriver(t *testing.T) {
 				tc.Messages[i].ReleaseAt, messages[i].ReleaseAt,
 			)
 
-			assert.NoError(drv.RemoveMessage(messages[i].QueueID))
+			assert.NoError(drv.RemoveMessages([]string{messages[i].QueueID}))
 		}
 
 		n, err = drv.MarkActive(now.Add(1 * time.Minute))
