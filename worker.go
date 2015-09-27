@@ -63,6 +63,18 @@ func NewWorker(c *WorkerConfig, driver Driver, consumer *Consumer, relay *Relay)
 func (w *Worker) Run() error {
 	log.Print("worker: starting delayd2 worker process")
 
+	log.Print("worker: registering delayd2 worker process")
+	if err := w.driver.RegisterSession(); err != nil {
+		return err
+	}
+
+	defer func() {
+		log.Print("worker: deregistering delayd2 worker process")
+		if err := w.driver.DeregisterSession(); err != nil {
+			log.Print("worker: unable to deregister session:", err)
+		}
+	}()
+
 	log.Print("worker: resetting aborted messages remaining in active queue")
 	n, err := w.driver.ResetActive()
 	if err != nil {
