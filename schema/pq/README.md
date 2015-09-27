@@ -4,6 +4,12 @@ Tested with PostgreSQL 9.4.
 
 ## Examples
 
+Registering session:
+
+```
+INSERT INTO session VALUES ('worker-1', now());
+```
+
 Queueing:
 
 ```sql
@@ -65,4 +71,10 @@ FROM
 WHERE
   queue_id IN ('queue-1', 'queue-2', 'queue-3')
 ;
+```
+
+Deregistering session:
+
+```
+DELETE FROM session WHERE worekr_id = 'worker-1';
 ```

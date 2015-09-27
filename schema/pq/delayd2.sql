@@ -1,3 +1,8 @@
+CREATE TABLE session (
+   worker_id     TEXT PRIMARY KEY
+ , keepalived_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
 CREATE TABLE queue (
    queue_id   TEXT PRIMARY KEY
  , worker_id  TEXT NOT NULL

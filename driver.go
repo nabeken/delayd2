@@ -9,13 +9,18 @@ import (
 	"github.com/lib/pq"
 )
 
-var ErrMessageDuplicated = errors.New("driver: message is duplicated")
+var (
+	ErrMessageDuplicated = errors.New("driver: message is duplicated")
+	ErrSessionRegistered = errors.New("driver: session is already registered")
+)
 
 type Driver interface {
+	RegisterSession() error
+	DeregisterSession() error
+	KeepAliveSession() error
 	Enqueue(string, int64, string, string) error
 	ResetActive() (int64, error)
 	MarkActive(time.Time) (int64, error)
-	RemoveMessage(string) error
 	RemoveMessages([]string) error
 	GetActiveMessages() ([]*QueueMessage, error)
 }
@@ -30,6 +35,45 @@ func NewDriver(workerID string, db *sql.DB) Driver {
 		workerID: workerID,
 		db:       db,
 	}
+}
+
+func (d *pqDriver) RegisterSession() error {
+	keepAlivedAt := time.Now()
+	_, err := d.db.Exec(`
+		INSERT
+		INTO
+		  session
+		VALUES
+			($1, $2)
+	;`, d.workerID, keepAlivedAt)
+
+	if perr, ok := err.(*pq.Error); ok && perr.Code.Class() == "23" {
+		return ErrSessionRegistered
+	}
+	return err
+}
+
+func (d *pqDriver) DeregisterSession() error {
+	_, err := d.db.Exec(`
+		DELETE
+		FROM
+		  session
+		WHERE
+		  worker_id = $1
+	;`, d.workerID)
+	return err
+}
+
+func (d *pqDriver) KeepAliveSession() error {
+	keepAlivedAt := time.Now()
+	_, err := d.db.Exec(`
+		UPDATE session
+		SET
+		  keepalived_at = $1
+		WHERE
+		  worker_id = $2
+	;`, keepAlivedAt, d.workerID)
+	return err
 }
 
 func (d *pqDriver) Enqueue(queueId string, delay int64, relayTo string, payload string) error {
@@ -83,17 +127,6 @@ func (d *pqDriver) MarkActive(now time.Time) (int64, error) {
 		return 0, err
 	}
 	return ret.RowsAffected()
-}
-
-func (d *pqDriver) RemoveMessage(queueID string) error {
-	_, err := d.db.Exec(`
-		DELETE
-		FROM
-			queue
-		WHERE
-			queue_id = $1
-	;`, queueID)
-	return err
 }
 
 func (d *pqDriver) RemoveMessages(queueIDs []string) error {

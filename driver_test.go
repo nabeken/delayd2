@@ -8,6 +8,46 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestDriverSession(t *testing.T) {
+	assert := assert.New(t)
+	drv := &pqDriver{
+		workerID: "testing-1",
+		db:       newTestDriver(),
+	}
+	defer drv.db.Exec("DELETE FROM session;")
+
+	{
+		// No error even if there is no session
+		assert.NoError(drv.DeregisterSession())
+	}
+
+	{
+		assert.NoError(drv.RegisterSession())
+		assert.Equal(ErrSessionRegistered, drv.RegisterSession())
+
+		// deregister and re-register
+		assert.NoError(drv.DeregisterSession())
+		assert.NoError(drv.RegisterSession())
+	}
+
+	{
+		var initializedAt time.Time
+		err := drv.db.QueryRow(
+			"SELECT keepalived_at FROM session WHERE worker_id = $1", drv.workerID).
+			Scan(&initializedAt)
+
+		assert.NoError(err)
+
+		var now time.Time
+		assert.NoError(drv.KeepAliveSession())
+		err = drv.db.QueryRow(
+			"SELECT keepalived_at FROM session WHERE worker_id = $1", drv.workerID).
+			Scan(&now)
+
+		assert.True(now.After(initializedAt))
+	}
+}
+
 func TestDriver(t *testing.T) {
 	assert := assert.New(t)
 
@@ -99,7 +139,7 @@ func TestDriver(t *testing.T) {
 				tc.Messages[i].ReleaseAt, messages[i].ReleaseAt,
 			)
 
-			assert.NoError(drv.RemoveMessage(messages[i].QueueID))
+			assert.NoError(drv.RemoveMessages([]string{messages[i].QueueID}))
 		}
 
 		n, err = drv.MarkActive(now.Add(1 * time.Minute))
