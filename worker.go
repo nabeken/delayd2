@@ -46,14 +46,6 @@ type Worker struct {
 
 // NewWorker creates a new worker.
 func NewWorker(c *WorkerConfig, driver Driver, consumer *Consumer, relay *Relay) *Worker {
-	if c.NumConsumerFactor == 0 {
-		c.NumConsumerFactor = 1
-	}
-
-	if c.NumRelayFactor == 0 {
-		c.NumRelayFactor = 1
-	}
-
 	return &Worker{
 		driver:   driver,
 		consumer: consumer,
