@@ -4,6 +4,7 @@ package delayd2
 import (
 	"log"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/nabeken/aws-go-sqs/queue"
@@ -42,7 +43,7 @@ func NewWorker(workerID string, driver Driver, consumer *Consumer, relay *Relay)
 		consumer: consumer,
 		relay:    relay,
 
-		relayCh:    make(chan releaseJob, runtime.NumCPU()),
+		relayCh:    make(chan releaseJob, runtime.NumCPU()*10),
 		shutdownCh: make(chan struct{}),
 		stoppedCh:  make(chan struct{}),
 	}
@@ -63,10 +64,12 @@ func (w *Worker) Run() error {
 
 	// FIXME: provide a way to configure this
 	nCPU := runtime.NumCPU()
-	for i := 0; i < nCPU; i++ {
+	for i := 0; i < nCPU*100; i++ {
 		log.Print("worker: launching consumer process")
 		go w.handleConsume()
+	}
 
+	for i := 0; i < nCPU*10; i++ {
 		log.Print("worker: launching relay worker process")
 		go w.relayWorker()
 	}
@@ -118,8 +121,8 @@ func (w *Worker) markActive(begin time.Time) (int64, error) {
 
 // handleMarkActive marks coming messages in queue.
 func (w *Worker) handleMarkActive() {
-	for range time.Tick(1 * time.Second) {
-		begin := time.Now()
+	for range time.Tick(10 * time.Millisecond) {
+		begin := time.Now().Truncate(time.Second)
 
 		n, err := w.markActive(begin)
 
@@ -133,12 +136,13 @@ func (w *Worker) handleMarkActive() {
 		if n > 0 {
 			log.Printf("worker: %d messages marked as active in %s", n, end.Sub(begin))
 		}
+		time.Sleep(1 * time.Second)
 	}
 }
 
 // handleRelease releases messages that is ready to fire.
 func (w *Worker) handleRelease() {
-	for range time.Tick(1 * time.Second) {
+	for range time.Tick(10 * time.Millisecond) {
 		select {
 		case <-w.shutdownCh:
 			close(w.relayCh)
@@ -155,6 +159,8 @@ func (w *Worker) handleRelease() {
 }
 
 type releaseJob struct {
+	*sync.WaitGroup
+
 	RelayTo  string
 	Messages []releaseMessage
 }
@@ -175,14 +181,19 @@ func (w *Worker) release() error {
 	// we need QueueID to delete from queue
 	batchMap := BuildBatchMap(messages)
 
+	var wg sync.WaitGroup
 	for relayTo, batchMsgs := range batchMap {
 		for _, rms := range batchMsgs {
+			wg.Add(1)
 			w.relayCh <- releaseJob{
+				WaitGroup: &wg,
+
 				RelayTo:  relayTo,
 				Messages: rms,
 			}
 		}
 	}
+	wg.Wait()
 	return nil
 }
 
@@ -195,6 +206,7 @@ func (w *Worker) relayWorker() {
 		if n > 0 {
 			log.Printf("worker: %d messages relayed in %s", n, end.Sub(begin))
 		}
+		rj.Done()
 	}
 	log.Print("relayworker: closed")
 }
@@ -224,16 +236,18 @@ func (w *Worker) releaseBatch(rj releaseJob) int64 {
 		}
 	}
 
+	succededIDs := make([]string, 0, len(rj.Messages))
 	for i, m := range rj.Messages {
 		if _, failed := failedIndex[i]; failed {
 			continue
 		}
+		succededIDs = append(succededIDs, m.QueueID)
+	}
 
-		if err := w.driver.RemoveMessage(m.QueueID); err != nil {
-			log.Printf("worker: unable to remove messages from queue: %s", err)
-			continue
-		}
-		n++
+	if err := w.driver.RemoveMessages(succededIDs); err != nil {
+		log.Printf("worker: unable to remove messages from queue: %s", err)
+	} else {
+		n += int64(len(succededIDs))
 	}
 
 	return n

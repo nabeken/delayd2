@@ -115,3 +115,32 @@ func newTestDriver() *sql.DB {
 	}
 	return db
 }
+
+func TestBuildPlaceHolders(t *testing.T) {
+	assert := assert.New(t)
+
+	for _, tc := range []struct {
+		N      int
+		Expect string
+	}{
+		{
+			N:      0,
+			Expect: "",
+		},
+		{
+			N:      1,
+			Expect: "($1)",
+		},
+		{
+			N:      2,
+			Expect: "($1, $2)",
+		},
+		{
+			N:      3,
+			Expect: "($1, $2, $3)",
+		},
+	} {
+		actual := BuildPlaceHolders(tc.N)
+		assert.Equal(tc.Expect, actual)
+	}
+}
