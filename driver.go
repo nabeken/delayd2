@@ -17,6 +17,7 @@ var (
 type Driver interface {
 	RegisterSession() error
 	DeregisterSession() error
+	KeepAliveSession() error
 	Enqueue(string, int64, string, string) error
 	ResetActive() (int64, error)
 	MarkActive(time.Time) (int64, error)
@@ -60,6 +61,18 @@ func (d *pqDriver) DeregisterSession() error {
 		WHERE
 		  worker_id = $1
 	;`, d.workerID)
+	return err
+}
+
+func (d *pqDriver) KeepAliveSession() error {
+	keepAlivedAt := time.Now()
+	_, err := d.db.Exec(`
+		UPDATE session
+		SET
+		  keepalived_at = $1
+		WHERE
+		  worker_id = $2
+	;`, keepAlivedAt, d.workerID)
 	return err
 }
 

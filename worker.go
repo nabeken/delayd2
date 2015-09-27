@@ -95,6 +95,7 @@ func (w *Worker) Run() error {
 		go w.relayWorker()
 	}
 
+	go w.handleKeepAlive()
 	go w.handleMarkActive()
 	go w.handleRelease()
 
@@ -116,6 +117,14 @@ func (w *Worker) Stop() {
 
 func (w *Worker) consume() (int64, error) {
 	return w.consumer.ConsumeMessages()
+}
+
+func (w *Worker) handleKeepAlive() {
+	for range time.Tick(1 * time.Second) {
+		if err := w.driver.KeepAliveSession(); err != nil {
+			log.Printf("worker: unable to keep alived: %s", err)
+		}
+	}
 }
 
 // handleConsume consumes messages in SQS.

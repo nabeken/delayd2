@@ -29,6 +29,23 @@ func TestDriverSession(t *testing.T) {
 		assert.NoError(drv.DeregisterSession())
 		assert.NoError(drv.RegisterSession())
 	}
+
+	{
+		var initializedAt time.Time
+		err := drv.db.QueryRow(
+			"SELECT keepalived_at FROM session WHERE worker_id = $1", drv.workerID).
+			Scan(&initializedAt)
+
+		assert.NoError(err)
+
+		var now time.Time
+		assert.NoError(drv.KeepAliveSession())
+		err = drv.db.QueryRow(
+			"SELECT keepalived_at FROM session WHERE worker_id = $1", drv.workerID).
+			Scan(&now)
+
+		assert.True(now.After(initializedAt))
+	}
 }
 
 func TestDriver(t *testing.T) {
