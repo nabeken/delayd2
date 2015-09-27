@@ -8,6 +8,29 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestDriverSession(t *testing.T) {
+	assert := assert.New(t)
+	drv := &pqDriver{
+		workerID: "testing-1",
+		db:       newTestDriver(),
+	}
+	defer drv.db.Exec("DELETE FROM session;")
+
+	{
+		// No error even if there is no session
+		assert.NoError(drv.DeregisterSession())
+	}
+
+	{
+		assert.NoError(drv.RegisterSession())
+		assert.Equal(ErrSessionRegistered, drv.RegisterSession())
+
+		// deregister and re-register
+		assert.NoError(drv.DeregisterSession())
+		assert.NoError(drv.RegisterSession())
+	}
+}
+
 func TestDriver(t *testing.T) {
 	assert := assert.New(t)
 
