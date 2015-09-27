@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -90,6 +91,24 @@ func (c *ServerCommand) Run(args []string) int {
 
 		NumConsumerFactor: config.NumConsumerFactor,
 		NumRelayFactor:    config.NumRelayFactor,
+	}
+
+	if config.NumConsumerFactor == 0 {
+		workerConfig.NumConsumerFactor = 1
+	}
+
+	if config.NumRelayFactor == 0 {
+		workerConfig.NumRelayFactor = 1
+	}
+
+	if workerConfig.ID == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			c.Ui.Error(fmt.Sprintf("Unable to get hostname: %s", err))
+			return 1
+		}
+		log.Printf("No worker-id specified so use hostname (%s) instead", hostname)
+		workerConfig.ID = hostname
 	}
 
 	w := delayd2.NewWorker(workerConfig, drv, consumer, relay)
