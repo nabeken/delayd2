@@ -27,6 +27,9 @@ type ServerConfig struct {
 	QueueName string `envconfig:"queue_name"`
 	Region    string `envconfig:"region"`
 
+	NumConsumerFactor int `envconfig:"num_consumer_factor"`
+	NumRelayFactor    int `envconfig:"num_relay_factor"`
+
 	EnablePProf bool
 }
 
@@ -82,7 +85,14 @@ func (c *ServerCommand) Run(args []string) int {
 	consumer := delayd2.NewConsumer(config.WorkerID, drv, q)
 	relay := delayd2.NewRelay(sqsSvc)
 
-	w := delayd2.NewWorker(config.WorkerID, drv, consumer, relay)
+	workerConfig := &delayd2.WorkerConfig{
+		ID: config.WorkerID,
+
+		NumConsumerFactor: config.NumConsumerFactor,
+		NumRelayFactor:    config.NumRelayFactor,
+	}
+
+	w := delayd2.NewWorker(workerConfig, drv, consumer, relay)
 
 	errCh := make(chan error)
 	go func() {

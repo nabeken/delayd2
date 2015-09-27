@@ -61,7 +61,11 @@ func TestWorker(t *testing.T) {
 		return
 	}
 
-	w := NewWorker(drv.workerID, drv, consumer, relay)
+	workerConfig := &WorkerConfig{
+		ID: drv.workerID,
+	}
+
+	w := NewWorker(workerConfig, drv, consumer, relay)
 
 	var numMessages int64
 	for i := 0; i < 2; i++ {

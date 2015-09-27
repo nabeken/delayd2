@@ -19,9 +19,18 @@ type QueueMessage struct {
 	Payload   string
 }
 
+// WorkerConfig is configuration for Worker.
+type WorkerConfig struct {
+	ID string
+
+	NumConsumerFactor int
+	NumRelayFactor    int
+}
+
 // Worker is the delayd2 worker.
 type Worker struct {
-	id       string
+	config *WorkerConfig
+
 	driver   Driver
 	consumer *Consumer
 	relay    *Relay
@@ -36,14 +45,23 @@ type Worker struct {
 }
 
 // NewWorker creates a new worker.
-func NewWorker(workerID string, driver Driver, consumer *Consumer, relay *Relay) *Worker {
+func NewWorker(c *WorkerConfig, driver Driver, consumer *Consumer, relay *Relay) *Worker {
+	if c.NumConsumerFactor == 0 {
+		c.NumConsumerFactor = 1
+	}
+
+	if c.NumRelayFactor == 0 {
+		c.NumRelayFactor = 1
+	}
+
 	return &Worker{
-		id:       workerID,
 		driver:   driver,
 		consumer: consumer,
 		relay:    relay,
 
-		relayCh:    make(chan releaseJob, runtime.NumCPU()*10),
+		config: c,
+
+		relayCh:    make(chan releaseJob, runtime.NumCPU()*c.NumRelayFactor),
 		shutdownCh: make(chan struct{}),
 		stoppedCh:  make(chan struct{}),
 	}
@@ -62,14 +80,13 @@ func (w *Worker) Run() error {
 
 	log.Print("worker: starting delayd2 process")
 
-	// FIXME: provide a way to configure this
 	nCPU := runtime.NumCPU()
-	for i := 0; i < nCPU*100; i++ {
+	for i := 0; i < nCPU*w.config.NumConsumerFactor; i++ {
 		log.Print("worker: launching consumer process")
 		go w.handleConsume()
 	}
 
-	for i := 0; i < nCPU*10; i++ {
+	for i := 0; i < nCPU*w.config.NumRelayFactor; i++ {
 		log.Print("worker: launching relay worker process")
 		go w.relayWorker()
 	}
