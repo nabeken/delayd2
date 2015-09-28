@@ -252,6 +252,7 @@ func (w *Worker) releaseBatch(rj releaseJob) int64 {
 	for _, m := range rj.Messages {
 		if _, found := w.succededIDsCache.Get(m.QueueID); found {
 			// skip since we already relayed
+			log.Printf("worker: seeing queue_id in the cache so continueing...")
 			continue
 		}
 		payloads = append(payloads, m.Payload)
@@ -259,20 +260,22 @@ func (w *Worker) releaseBatch(rj releaseJob) int64 {
 
 	var n int64
 	failedIndex := make(map[int]struct{})
-	if err := w.relay.Relay(rj.RelayTo, payloads); err != nil {
-		// only print log here in batch operation
-		// TODO: a dead letter queue support
-		berrs, batchOk := queue.IsBatchError(err)
-		if !batchOk {
-			log.Printf("worker: unable to send message due to non batch error. skipping: %s", err)
-			return 0
-		}
-
-		for _, berr := range berrs {
-			if berr.SenderFault {
-				log.Printf("worker: unable to send message due to sender's fault: skipping: %s", berr.Message)
+	if len(payloads) > 0 {
+		if err := w.relay.Relay(rj.RelayTo, payloads); err != nil {
+			// only print log here in batch operation
+			// TODO: a dead letter queue support
+			berrs, batchOk := queue.IsBatchError(err)
+			if !batchOk {
+				log.Printf("worker: unable to send message due to non batch error. skipping: %s", err)
+				return 0
 			}
-			failedIndex[berr.Index] = struct{}{}
+
+			for _, berr := range berrs {
+				if berr.SenderFault {
+					log.Printf("worker: unable to send message due to sender's fault: skipping: %s", berr.Message)
+				}
+				failedIndex[berr.Index] = struct{}{}
+			}
 		}
 	}
 
