@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nabeken/aws-go-sqs/queue"
+	"github.com/pmylund/go-cache"
 )
 
 // QueueMessage is a message queued in the database.
@@ -35,6 +36,8 @@ type Worker struct {
 	consumer *Consumer
 	relay    *Relay
 
+	succededIDsCache *cache.Cache
+
 	relayCh chan releaseJob
 
 	// signaled from external
@@ -50,6 +53,9 @@ func NewWorker(c *WorkerConfig, driver Driver, consumer *Consumer, relay *Relay)
 		driver:   driver,
 		consumer: consumer,
 		relay:    relay,
+
+		// Cache succededIDs to prepare for transient errors in the database (e.g. failover/network problems)
+		succededIDsCache: cache.New(15*time.Minute, 1*time.Minute),
 
 		config: c,
 
@@ -244,6 +250,10 @@ func (w *Worker) relayWorker() {
 func (w *Worker) releaseBatch(rj releaseJob) int64 {
 	payloads := make([]string, 0, len(rj.Messages))
 	for _, m := range rj.Messages {
+		if _, found := w.succededIDsCache.Get(m.QueueID); found {
+			// skip since we already relayed
+			continue
+		}
 		payloads = append(payloads, m.Payload)
 	}
 
@@ -272,11 +282,19 @@ func (w *Worker) releaseBatch(rj releaseJob) int64 {
 			continue
 		}
 		succededIDs = append(succededIDs, m.QueueID)
+
+		// remember succededIDs for a while to prevent us from relaying message in transient error
+		w.succededIDsCache.Set(m.QueueID, struct{}{}, cache.DefaultExpiration)
 	}
 
 	if err := w.driver.RemoveMessages(succededIDs); err != nil {
 		log.Printf("worker: unable to remove messages from queue: %s", err)
 	} else {
+		// reset succededIDs here since we succeeded to remove messages from the database
+		// When we succeeded to remove messages, the messages will not appear again so it's safe.
+		for _, id := range succededIDs {
+			w.succededIDsCache.Delete(id)
+		}
 		n += int64(len(succededIDs))
 	}
 
