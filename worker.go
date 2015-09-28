@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nabeken/aws-go-sqs/queue"
+	"github.com/pmylund/go-cache"
 )
 
 // QueueMessage is a message queued in the database.
@@ -35,6 +36,8 @@ type Worker struct {
 	consumer *Consumer
 	relay    *Relay
 
+	succededIDsCache *cache.Cache
+
 	relayCh chan releaseJob
 
 	// signaled from external
@@ -50,6 +53,9 @@ func NewWorker(c *WorkerConfig, driver Driver, consumer *Consumer, relay *Relay)
 		driver:   driver,
 		consumer: consumer,
 		relay:    relay,
+
+		// Cache succededIDs to prepare for transient errors in the database (e.g. failover/network problems)
+		succededIDsCache: cache.New(15*time.Minute, 1*time.Minute),
 
 		config: c,
 
@@ -244,25 +250,32 @@ func (w *Worker) relayWorker() {
 func (w *Worker) releaseBatch(rj releaseJob) int64 {
 	payloads := make([]string, 0, len(rj.Messages))
 	for _, m := range rj.Messages {
+		if _, found := w.succededIDsCache.Get(m.QueueID); found {
+			// skip since we already relayed
+			log.Printf("worker: seeing queue_id in the cache so continueing...")
+			continue
+		}
 		payloads = append(payloads, m.Payload)
 	}
 
 	var n int64
 	failedIndex := make(map[int]struct{})
-	if err := w.relay.Relay(rj.RelayTo, payloads); err != nil {
-		// only print log here in batch operation
-		// TODO: a dead letter queue support
-		berrs, batchOk := queue.IsBatchError(err)
-		if !batchOk {
-			log.Printf("worker: unable to send message due to non batch error. skipping: %s", err)
-			return 0
-		}
-
-		for _, berr := range berrs {
-			if berr.SenderFault {
-				log.Printf("worker: unable to send message due to sender's fault: skipping: %s", berr.Message)
+	if len(payloads) > 0 {
+		if err := w.relay.Relay(rj.RelayTo, payloads); err != nil {
+			// only print log here in batch operation
+			// TODO: a dead letter queue support
+			berrs, batchOk := queue.IsBatchError(err)
+			if !batchOk {
+				log.Printf("worker: unable to send message due to non batch error. skipping: %s", err)
+				return 0
 			}
-			failedIndex[berr.Index] = struct{}{}
+
+			for _, berr := range berrs {
+				if berr.SenderFault {
+					log.Printf("worker: unable to send message due to sender's fault: skipping: %s", berr.Message)
+				}
+				failedIndex[berr.Index] = struct{}{}
+			}
 		}
 	}
 
@@ -272,11 +285,19 @@ func (w *Worker) releaseBatch(rj releaseJob) int64 {
 			continue
 		}
 		succededIDs = append(succededIDs, m.QueueID)
+
+		// remember succededIDs for a while to prevent us from relaying message in transient error
+		w.succededIDsCache.Set(m.QueueID, struct{}{}, cache.DefaultExpiration)
 	}
 
 	if err := w.driver.RemoveMessages(succededIDs); err != nil {
 		log.Printf("worker: unable to remove messages from queue: %s", err)
 	} else {
+		// reset succededIDs here since we succeeded to remove messages from the database
+		// When we succeeded to remove messages, the messages will not appear again so it's safe.
+		for _, id := range succededIDs {
+			w.succededIDsCache.Delete(id)
+		}
 		n += int64(len(succededIDs))
 	}
 
