@@ -61,10 +61,9 @@ func (c *Consumer) ConsumeMessages() (int64, error) {
 		if err == ErrMessageDuplicated {
 			// delete immediately if duplicated
 			log.Printf("consumer: %s: %s", *m.MessageId, err)
-		} else {
-			succeededReceiptHandles = append(succeededReceiptHandles, m.ReceiptHandle)
-			n++
 		}
+		succeededReceiptHandles = append(succeededReceiptHandles, m.ReceiptHandle)
+		n++
 	}
 
 	if len(succeededReceiptHandles) > 0 {
