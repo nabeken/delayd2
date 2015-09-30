@@ -2,8 +2,10 @@ package delayd2
 
 import (
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/lib/pq"
@@ -23,6 +25,47 @@ type Driver interface {
 	MarkActive(time.Time) (int64, error)
 	RemoveMessages([]string) error
 	GetActiveMessages() ([]*QueueMessage, error)
+}
+
+func init() {
+	sql.Register("postgres-delayd2", &pqDrv{10 * time.Second})
+}
+
+type pqDrv struct {
+	keepalive time.Duration
+}
+
+func (d *pqDrv) Open(name string) (driver.Conn, error) {
+	return pq.DialOpen(&pqDialer{d.keepalive}, name)
+}
+
+type pqDialer struct {
+	keepalive time.Duration
+}
+
+func (d *pqDialer) setKeepAlive(conn net.Conn) {
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		tcpConn.SetKeepAlivePeriod(d.keepalive)
+		tcpConn.SetKeepAlive(true)
+	}
+}
+
+func (d *pqDialer) Dial(ntw, addr string) (net.Conn, error) {
+	conn, err := net.Dial(ntw, addr)
+	if err != nil {
+		return nil, err
+	}
+	d.setKeepAlive(conn)
+	return conn, nil
+}
+
+func (d *pqDialer) DialTimeout(ntw, addr string, timeout time.Duration) (net.Conn, error) {
+	conn, err := net.DialTimeout(ntw, addr, timeout)
+	if err != nil {
+		return nil, err
+	}
+	d.setKeepAlive(conn)
+	return conn, nil
 }
 
 type pqDriver struct {
