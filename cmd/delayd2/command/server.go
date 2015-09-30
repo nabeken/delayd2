@@ -82,7 +82,7 @@ func (c *ServerCommand) Run(args []string) int {
 		config.WorkerID = hostname
 	}
 
-	db, err := sql.Open("postgres", config.DSN)
+	db, err := sql.Open("postgres-delayd2", config.DSN)
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("Unable to open database connection: %s", err))
 		return 1
