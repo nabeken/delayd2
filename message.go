@@ -1,6 +1,8 @@
 package delayd2
 
 import (
+	"log"
+
 	"github.com/nabeken/aws-go-sqs/queue"
 	"github.com/nabeken/aws-go-sqs/queue/option"
 )
@@ -51,11 +53,31 @@ func (s *Sender) SendMessageBatch(duration int, relayTo string, payloads []strin
 			})
 		}
 
-		// stop immediately if error occurs
+		failedIndex := make(map[int]struct{})
 		if err := s.queue.SendMessageBatch(batch...); err != nil {
-			return err
+			berrs, batchErr := queue.IsBatchError(err)
+			if !batchErr {
+				// retry until it succeeds
+				log.Printf("unable to send messages but continuing: %s", err)
+				continue
+			}
+
+			for _, berr := range berrs {
+				if berr.SenderFault {
+					// return immediately if error is on our fault
+					return err
+				}
+				failedIndex[berr.Index] = struct{}{}
+			}
 		}
 		remaining = remaining[len(cur):]
+
+		// restore failed messages
+		for i, m := range batch {
+			if _, failed := failedIndex[i]; failed {
+				remaining = append(remaining, m.Body)
+			}
+		}
 	}
 
 	return nil
