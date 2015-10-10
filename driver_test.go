@@ -8,6 +8,42 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestDriverMarkOrphaned(t *testing.T) {
+	assert := assert.New(t)
+	drv := &pqDriver{
+		workerID: "testing-1",
+		db:       newTestDriver(),
+	}
+	defer drv.db.Exec("DELETE FROM queue;")
+
+	for _, m := range []*QueueMessage{
+		{
+			QueueID:  "queue-1",
+			WorkerID: "testing-1",
+			RelayTo:  "relay-to",
+			Payload:  "payload-1",
+		},
+		{
+			QueueID:  "queue-2",
+			WorkerID: "testing-1",
+			RelayTo:  "relay-to",
+			Payload:  "payload-2",
+		},
+	} {
+		assert.NoError(drv.Enqueue(m.QueueID, 60, m.RelayTo, m.Payload))
+	}
+
+	assert.NoError(drv.MarkOrphaned())
+
+	var c int
+	err := drv.db.QueryRow(
+		"SELECT count(*) FROM queue WHERE worker_id = $1", orphanedWorkerID,
+	).Scan(&c)
+
+	assert.NoError(err)
+	assert.Equal(2, c)
+}
+
 func TestDriverSession(t *testing.T) {
 	assert := assert.New(t)
 	drv := &pqDriver{

@@ -11,6 +11,8 @@ import (
 	"github.com/lib/pq"
 )
 
+const orphanedWorkerID = "__ORPHANED__"
+
 var (
 	ErrMessageDuplicated = errors.New("driver: message is duplicated")
 	ErrSessionRegistered = errors.New("driver: session is already registered")
@@ -23,6 +25,7 @@ type Driver interface {
 	Enqueue(string, int64, string, string) error
 	ResetActive() (int64, error)
 	MarkActive(time.Time) (int64, error)
+	MarkOrphaned() error
 	RemoveMessages([]string) error
 	GetActiveMessages() ([]*QueueMessage, error)
 }
@@ -148,6 +151,17 @@ func (d *pqDriver) ResetActive() (int64, error) {
 		return 0, err
 	}
 	return ret.RowsAffected()
+}
+
+func (d *pqDriver) MarkOrphaned() error {
+	_, err := d.db.Exec(`
+		UPDATE queue
+		SET
+		  worker_id = $1
+		WHERE
+		  worker_id = $2
+	;`, orphanedWorkerID, d.workerID)
+	return err
 }
 
 func (d *pqDriver) MarkActive(now time.Time) (int64, error) {

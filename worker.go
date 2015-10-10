@@ -24,6 +24,8 @@ type QueueMessage struct {
 type WorkerConfig struct {
 	ID string
 
+	MarkOrphanedAtShutdown bool
+
 	NumConsumerFactor int
 	NumRelayFactor    int
 }
@@ -75,6 +77,14 @@ func (w *Worker) Run() error {
 	}
 
 	defer func() {
+		if w.config.MarkOrphanedAtShutdown {
+			log.Print("worker: marking messages as orphaned")
+
+			if err := w.driver.MarkOrphaned(); err != nil {
+				log.Print("worker: unable to mark messages as orphaned:", err)
+			}
+		}
+
 		log.Print("worker: deregistering delayd2 worker process")
 		if err := w.driver.DeregisterSession(); err != nil {
 			log.Print("worker: unable to deregister session:", err)
