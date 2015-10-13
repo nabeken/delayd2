@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestDriverMarkOrphaned(t *testing.T) {
+func TestDriverOrphans(t *testing.T) {
 	assert := assert.New(t)
 	drv := &pqDriver{
 		workerID: "testing-1",
@@ -35,13 +35,20 @@ func TestDriverMarkOrphaned(t *testing.T) {
 
 	assert.NoError(drv.MarkOrphaned())
 
-	var c int
-	err := drv.db.QueryRow(
-		"SELECT count(*) FROM queue WHERE worker_id = $1", orphanedWorkerID,
-	).Scan(&c)
+	{
+		var c int
+		err := drv.db.QueryRow(
+			"SELECT count(*) FROM queue WHERE worker_id = $1", orphanedWorkerID,
+		).Scan(&c)
 
-	assert.NoError(err)
-	assert.Equal(2, c)
+		assert.NoError(err)
+		assert.Equal(2, c)
+	}
+	{
+		n, err := drv.AdoptOrphans()
+		assert.NoError(err)
+		assert.Equal(int64(2), n)
+	}
 }
 
 func TestDriverSession(t *testing.T) {

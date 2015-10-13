@@ -26,6 +26,7 @@ type Driver interface {
 	ResetActive() (int64, error)
 	MarkActive(time.Time) (int64, error)
 	MarkOrphaned() error
+	AdoptOrphans() (int64, error)
 	RemoveMessages([]string) error
 	GetActiveMessages() ([]*QueueMessage, error)
 }
@@ -162,6 +163,20 @@ func (d *pqDriver) MarkOrphaned() error {
 		  worker_id = $2
 	;`, orphanedWorkerID, d.workerID)
 	return err
+}
+
+func (d *pqDriver) AdoptOrphans() (int64, error) {
+	ret, err := d.db.Exec(`
+		UPDATE queue
+		SET
+		  worker_id = $1
+		WHERE
+		  worker_id = $2
+	;`, d.workerID, orphanedWorkerID)
+	if err != nil {
+		return 0, err
+	}
+	return ret.RowsAffected()
 }
 
 func (d *pqDriver) MarkActive(now time.Time) (int64, error) {

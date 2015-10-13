@@ -111,6 +111,7 @@ func (w *Worker) Run() error {
 		go w.relayWorker()
 	}
 
+	go w.handleAdoptOrphans()
 	go w.handleKeepAlive()
 	go w.handleMarkActive()
 	go w.handleRelease()
@@ -157,6 +158,25 @@ func (w *Worker) handleConsume() {
 
 		if n > 0 {
 			log.Printf("worker: %d messages consumed in %s", n, end.Sub(begin))
+		}
+	}
+}
+
+func (w *Worker) handleAdoptOrphans() {
+	for range time.Tick(1 * time.Minute) {
+		begin := time.Now()
+
+		n, err := w.driver.AdoptOrphans()
+
+		end := time.Now()
+
+		if err != nil {
+			log.Printf("worker: unable to adopt orphans: %s", err)
+			continue
+		}
+
+		if n > 0 {
+			log.Printf("worker: %d orphans adopted in %s", n, end.Sub(begin))
 		}
 	}
 }
