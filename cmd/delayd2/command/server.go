@@ -128,8 +128,8 @@ func (c *ServerCommand) Run(args []string) int {
 		select {
 		case <-c.ShutdownCh:
 			// we should wait until s.Stop returns for 10 seconds.
-			time.AfterFunc(10*time.Second, func() {
-				errCh <- errors.New("delayd2: Worker#Stop() does not return for 10 seconds. existing...")
+			time.AfterFunc(1*time.Minute, func() {
+				errCh <- errors.New("delayd2: Worker#Stop() does not return for 1 minute. existing...")
 			})
 			w.Stop()
 		}
