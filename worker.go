@@ -24,7 +24,7 @@ type QueueMessage struct {
 type WorkerConfig struct {
 	ID string
 
-	LeaveMessageOrphanedAtShutdown bool
+	LeaveMessagesOrphanedAtShutdown bool
 
 	NumConsumerFactor int
 	NumRelayFactor    int
@@ -77,7 +77,7 @@ func (w *Worker) Run() error {
 	}
 
 	defer func() {
-		if w.config.LeaveMessageOrphanedAtShutdown {
+		if w.config.LeaveMessagesOrphanedAtShutdown {
 			log.Print("worker: leaving messages as orphaned")
 
 			if err := w.driver.MarkOrphaned(); err != nil {
@@ -163,7 +163,7 @@ func (w *Worker) handleConsume() {
 }
 
 func (w *Worker) handleAdoptOrphans() {
-	for range time.Tick(1 * time.Minute) {
+	for range time.Tick(10 * time.Second) {
 		begin := time.Now()
 
 		n, err := w.driver.AdoptOrphans()

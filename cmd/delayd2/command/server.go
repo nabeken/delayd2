@@ -113,6 +113,8 @@ func (c *ServerCommand) Run(args []string) int {
 
 		NumConsumerFactor: config.NumConsumerFactor,
 		NumRelayFactor:    config.NumRelayFactor,
+
+		LeaveMessagesOrphanedAtShutdown: config.LeaveMessagesOrphanedAtShutdown,
 	}
 
 	w := delayd2.NewWorker(workerConfig, drv, consumer, relay)
