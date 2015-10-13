@@ -32,6 +32,8 @@ type ServerConfig struct {
 	NumRelayFactor    int `envconfig:"num_relay_factor"`
 
 	EnablePProf bool
+
+	LeaveMessagesOrphanedAtShutdown bool
 }
 
 type ServerCommand struct {
@@ -50,6 +52,7 @@ func (c *ServerCommand) Run(args []string) int {
 
 	cmdFlags := flag.NewFlagSet("server", flag.ContinueOnError)
 	cmdFlags.BoolVar(&config.EnablePProf, "pprof", false, "enable pprof server on 127.0.0.1:6060")
+	cmdFlags.BoolVar(&config.LeaveMessagesOrphanedAtShutdown, "leave-messages-orphaned-at-shutdown", true, "leave messages orphaned at shutdown")
 
 	if err := cmdFlags.Parse(args); err != nil {
 		c.Ui.Error(c.Help())
@@ -110,6 +113,8 @@ func (c *ServerCommand) Run(args []string) int {
 
 		NumConsumerFactor: config.NumConsumerFactor,
 		NumRelayFactor:    config.NumRelayFactor,
+
+		LeaveMessagesOrphanedAtShutdown: config.LeaveMessagesOrphanedAtShutdown,
 	}
 
 	w := delayd2.NewWorker(workerConfig, drv, consumer, relay)
