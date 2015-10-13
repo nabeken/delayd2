@@ -28,6 +28,7 @@ type ServerConfig struct {
 	QueueName string `envconfig:"queue_name"`
 	Region    string `envconfig:"region"`
 
+	ShutdownDuration  int `envconfig:"shutdown_duration"`
 	NumConsumerFactor int `envconfig:"num_consumer_factor"`
 	NumRelayFactor    int `envconfig:"num_relay_factor"`
 
@@ -73,6 +74,10 @@ func (c *ServerCommand) Run(args []string) int {
 
 	if config.NumRelayFactor == 0 {
 		config.NumRelayFactor = 1
+	}
+
+	if config.ShutdownDuration == 0 {
+		config.ShutdownDuration = 60
 	}
 
 	if config.WorkerID == "" {
@@ -128,7 +133,7 @@ func (c *ServerCommand) Run(args []string) int {
 		select {
 		case <-c.ShutdownCh:
 			// we should wait until s.Stop returns for 10 seconds.
-			time.AfterFunc(1*time.Minute, func() {
+			time.AfterFunc(time.Duration(config.ShutdownDuration)*time.Second, func() {
 				errCh <- errors.New("delayd2: Worker#Stop() does not return for 1 minute. existing...")
 			})
 			w.Stop()
