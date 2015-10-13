@@ -186,6 +186,13 @@ func (w *Worker) markActive(begin time.Time) (int64, error) {
 // handleMarkActive marks coming messages in queue.
 func (w *Worker) handleMarkActive() {
 	for range time.Tick(10 * time.Millisecond) {
+		select {
+		case <-w.shutdownCh:
+			log.Print("worker: shutting down marking handler")
+			return
+		default:
+		}
+
 		begin := time.Now().Truncate(time.Second)
 
 		n, err := w.markActive(begin)
