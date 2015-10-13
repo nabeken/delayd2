@@ -24,7 +24,7 @@ type QueueMessage struct {
 type WorkerConfig struct {
 	ID string
 
-	MarkOrphanedAtShutdown bool
+	LeaveMessageOrphanedAtShutdown bool
 
 	NumConsumerFactor int
 	NumRelayFactor    int
@@ -77,8 +77,8 @@ func (w *Worker) Run() error {
 	}
 
 	defer func() {
-		if w.config.MarkOrphanedAtShutdown {
-			log.Print("worker: marking messages as orphaned")
+		if w.config.LeaveMessageOrphanedAtShutdown {
+			log.Print("worker: leaving messages as orphaned")
 
 			if err := w.driver.MarkOrphaned(); err != nil {
 				log.Print("worker: unable to mark messages as orphaned:", err)
