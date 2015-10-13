@@ -77,6 +77,11 @@ func (w *Worker) Run() error {
 	}
 
 	defer func() {
+		log.Print("worker: resetting aborted messages remaining in active queue")
+		if _, err := w.driver.ResetActive(); err != nil {
+			log.Print("worker: unable to reset messages in active queue:", err)
+		}
+
 		if w.config.LeaveMessagesOrphanedAtShutdown {
 			log.Print("worker: leaving messages as orphaned")
 
@@ -90,13 +95,6 @@ func (w *Worker) Run() error {
 			log.Print("worker: unable to deregister session:", err)
 		}
 	}()
-
-	log.Print("worker: resetting aborted messages remaining in active queue")
-	n, err := w.driver.ResetActive()
-	if err != nil {
-		return err
-	}
-	log.Printf("worker: %d aborted messages in active queue resetted", n)
 
 	log.Print("worker: starting delayd2 process")
 
