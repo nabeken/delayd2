@@ -45,8 +45,8 @@ type Worker struct {
 	// signaled from external
 	shutdownCh chan struct{}
 
-	// notified when handleRelease() finishes its task
-	stoppedCh chan struct{}
+	// wait for all worker goroutine to be finished
+	stoppped sync.WaitGroup
 }
 
 // NewWorker creates a new worker.
@@ -63,8 +63,15 @@ func NewWorker(c *WorkerConfig, driver Driver, consumer *Consumer, relay *Relay)
 
 		relayCh:    make(chan releaseJob, runtime.NumCPU()*c.NumRelayFactor),
 		shutdownCh: make(chan struct{}),
-		stoppedCh:  make(chan struct{}),
 	}
+}
+
+func (w *Worker) runWorker(f func()) {
+	w.stoppped.Add(1)
+	go func() {
+		f()
+		w.stoppped.Done()
+	}()
 }
 
 // Run starts the worker process.
@@ -96,33 +103,32 @@ func (w *Worker) Run() error {
 		}
 	}()
 
-	log.Print("worker: starting delayd2 process")
-
 	nCPU := runtime.NumCPU()
 	for i := 0; i < nCPU*w.config.NumConsumerFactor; i++ {
 		log.Print("worker: launching consumer process")
-		go w.handleConsume()
+		w.runWorker(func() { w.handleConsume() })
+
 	}
 
 	for i := 0; i < nCPU*w.config.NumRelayFactor; i++ {
 		log.Print("worker: launching relay worker process")
-		go w.relayWorker()
+		w.runWorker(func() { w.relayWorker() })
 	}
 
-	go w.handleAdoptOrphans()
-	go w.handleKeepAlive()
-	go w.handleMarkActive()
-	go w.handleRelease()
+	w.runWorker(func() { w.handleAdoptOrphans() })
+	w.runWorker(func() { w.handleKeepAlive() })
+	w.runWorker(func() { w.handleMarkActive() })
+	w.runWorker(func() { w.handleRelease() })
+
+	log.Print("worker: starting delayd2 process")
 
 	select {
 	case <-w.shutdownCh:
 		log.Print("worker: receiving shutdown signal. waiting for the process finished.")
 	}
 
-	select {
-	case <-w.stoppedCh:
-		log.Print("worker: the process finished.")
-	}
+	w.stoppped.Wait()
+	log.Print("worker: the process finished.")
 	return nil
 }
 
@@ -136,6 +142,13 @@ func (w *Worker) consume() (int64, error) {
 
 func (w *Worker) handleKeepAlive() {
 	for range time.Tick(1 * time.Second) {
+		select {
+		case <-w.shutdownCh:
+			log.Print("worker: shutting down keepalive worker")
+			return
+		default:
+		}
+
 		if err := w.driver.KeepAliveSession(); err != nil {
 			log.Printf("worker: unable to keep alived: %s", err)
 		}
@@ -145,6 +158,13 @@ func (w *Worker) handleKeepAlive() {
 // handleConsume consumes messages in SQS.
 func (w *Worker) handleConsume() {
 	for {
+		select {
+		case <-w.shutdownCh:
+			log.Print("worker: shutting down consuming worker")
+			return
+		default:
+		}
+
 		begin := time.Now()
 		n, err := w.consume()
 		end := time.Now()
@@ -162,6 +182,13 @@ func (w *Worker) handleConsume() {
 
 func (w *Worker) handleAdoptOrphans() {
 	for range time.Tick(10 * time.Second) {
+		select {
+		case <-w.shutdownCh:
+			log.Print("worker: shutting down adopting worker")
+			return
+		default:
+		}
+
 		begin := time.Now()
 
 		n, err := w.driver.AdoptOrphans()
@@ -188,7 +215,7 @@ func (w *Worker) handleMarkActive() {
 	for range time.Tick(10 * time.Millisecond) {
 		select {
 		case <-w.shutdownCh:
-			log.Print("worker: shutting down marking handler")
+			log.Print("worker: shutting down marking worker")
 			return
 		default:
 		}
@@ -217,7 +244,6 @@ func (w *Worker) handleRelease() {
 		select {
 		case <-w.shutdownCh:
 			close(w.relayCh)
-			close(w.stoppedCh)
 			return
 		default:
 		}
