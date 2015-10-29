@@ -15,7 +15,6 @@ import (
 
 	_ "github.com/lib/pq"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/nabeken/aws-go-sqs/queue"
@@ -26,7 +25,6 @@ type ServerConfig struct {
 	WorkerID  string `envconfig:"worker_id"`
 	DSN       string `envconfig:"dsn"`
 	QueueName string `envconfig:"queue_name"`
-	Region    string `envconfig:"region"`
 
 	ShutdownDuration  int `envconfig:"shutdown_duration"`
 	NumConsumerFactor int `envconfig:"num_consumer_factor"`
@@ -102,7 +100,7 @@ func (c *ServerCommand) Run(args []string) int {
 	defer db.Close()
 
 	drv := delayd2.NewDriver(config.WorkerID, db)
-	sqsSvc := sqs.New(&aws.Config{Region: aws.String(config.Region)})
+	sqsSvc := sqs.New(nil)
 
 	q, err := queue.New(sqsSvc, config.QueueName)
 	if err != nil {

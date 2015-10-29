@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/nabeken/aws-go-sqs/queue"
 	"github.com/stretchr/testify/assert"
@@ -44,7 +43,7 @@ func TestWorker(t *testing.T) {
 	drv.db.Exec("DELETE FROM queue;")
 	defer drv.db.Exec("DELETE FROM queue;")
 
-	sqsSvc := sqs.New(&aws.Config{Region: aws.String("ap-northeast-1")})
+	sqsSvc := sqs.New(nil)
 	q, err := queue.New(sqsSvc, queueName)
 	if err != nil {
 		t.Fatal(err)

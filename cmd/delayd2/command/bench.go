@@ -10,7 +10,6 @@ import (
 
 	_ "github.com/lib/pq"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/nabeken/aws-go-sqs/queue"
@@ -20,7 +19,6 @@ import (
 
 type BenchRecvConfig struct {
 	QueueName string `envconfig:"queue_name"`
-	Region    string `envconfig:"region"`
 
 	NumberOfMessages int
 }
@@ -47,7 +45,7 @@ func (c *BenchCommand) Recv(args []string) int {
 		return 1
 	}
 
-	sqsSvc := sqs.New(&aws.Config{Region: aws.String(config.Region)})
+	sqsSvc := sqs.New(nil)
 	q, err := queue.New(sqsSvc, config.QueueName)
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("Unable to initialize SQS connection: %s", err))
@@ -111,7 +109,6 @@ func (c *BenchCommand) Recv(args []string) int {
 type BenchSendConfig struct {
 	QueueName       string `envconfig:"queue_name"`
 	TargetQueueName string `envconfig:"target_queue_name"`
-	Region          string `envconfig:"region"`
 
 	NumberOfMessages int
 	Concurrency      int
@@ -136,7 +133,7 @@ func (c *BenchCommand) Send(args []string) int {
 		return 1
 	}
 
-	sqsSvc := sqs.New(&aws.Config{Region: aws.String(config.Region)})
+	sqsSvc := sqs.New(nil)
 	q, err := queue.New(sqsSvc, config.QueueName)
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("Unable to initialize SQS connection: %s", err))
