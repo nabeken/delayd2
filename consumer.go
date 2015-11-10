@@ -55,7 +55,7 @@ func (c *Consumer) ConsumeMessages() (int64, error) {
 
 		err = c.driver.Enqueue(*m.MessageId, duration, relayTo, *m.Body)
 		if err != nil && err != ErrMessageDuplicated {
-			log.Printf("consumer: %s: unable to enqueue this message. skipping", *m.MessageId)
+			log.Printf("consumer: %s: %s: unable to enqueue this message. skipping", *m.MessageId, err)
 			continue
 		}
 		if err == ErrMessageDuplicated {
