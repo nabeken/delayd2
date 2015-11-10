@@ -134,7 +134,7 @@ func (c *BenchCommand) Send(args []string) int {
 		return 1
 	}
 
-	sqsSvc := sqs.New(nil)
+	sqsSvc := sqs.New(session.New())
 	q, err := queue.New(sqsSvc, config.QueueName)
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("Unable to initialize SQS connection: %s", err))
