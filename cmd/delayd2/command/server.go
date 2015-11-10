@@ -15,6 +15,7 @@ import (
 
 	_ "github.com/lib/pq"
 
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/nabeken/aws-go-sqs/queue"
@@ -100,7 +101,7 @@ func (c *ServerCommand) Run(args []string) int {
 	defer db.Close()
 
 	drv := delayd2.NewDriver(config.WorkerID, db)
-	sqsSvc := sqs.New(nil)
+	sqsSvc := sqs.New(session.New())
 
 	q, err := queue.New(sqsSvc, config.QueueName)
 	if err != nil {
