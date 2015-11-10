@@ -10,6 +10,7 @@ import (
 
 	_ "github.com/lib/pq"
 
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/nabeken/aws-go-sqs/queue"
@@ -45,7 +46,7 @@ func (c *BenchCommand) Recv(args []string) int {
 		return 1
 	}
 
-	sqsSvc := sqs.New(nil)
+	sqsSvc := sqs.New(session.New())
 	q, err := queue.New(sqsSvc, config.QueueName)
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("Unable to initialize SQS connection: %s", err))
