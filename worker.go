@@ -243,7 +243,9 @@ func (w *Worker) handleRelease() {
 	for range time.Tick(10 * time.Millisecond) {
 		select {
 		case <-w.shutdownCh:
+			log.Print("worker: shutting down releasing worker")
 			close(w.relayCh)
+			log.Print("worker: relayCh closed")
 			return
 		default:
 		}
