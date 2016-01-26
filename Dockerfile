@@ -17,8 +17,9 @@ RUN go-wrapper download -d \
   github.com/vaughan0/go-ini \
   golang.org/x/crypto/...
 
-RUN go-wrapper download ./... && \
-  go install ./...
+RUN go-wrapper download ./...
+
+RUN go install -ldflags "-X main.GitCommit=\"$(git rev-parse HEAD)\"" github.com/nabeken/delayd2/cmd/delayd2
 
 RUN useradd -m delayd2 && \
   chown delayd2:delayd2 -R /go
