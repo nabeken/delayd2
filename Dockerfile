@@ -1,4 +1,4 @@
-FROM golang:1.5
+FROM golang:1.6
 MAINTAINER TANABE Ken-ichi <nabeken@tknetworks.org>
 
 RUN mkdir -p /go/src/github.com/nabeken/delayd2
