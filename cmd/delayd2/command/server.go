@@ -17,6 +17,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/fukata/golang-stats-api-handler"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/nabeken/aws-go-sqs/queue"
 	"github.com/nabeken/delayd2"
@@ -31,7 +32,7 @@ type ServerConfig struct {
 	NumConsumerFactor int `envconfig:"num_consumer_factor"`
 	NumRelayFactor    int `envconfig:"num_relay_factor"`
 
-	EnablePProf bool
+	HTTPServer string
 
 	LeaveMessagesOrphanedAtShutdown bool
 }
@@ -51,7 +52,7 @@ func (c *ServerCommand) Run(args []string) int {
 	}
 
 	cmdFlags := flag.NewFlagSet("server", flag.ContinueOnError)
-	cmdFlags.BoolVar(&config.EnablePProf, "pprof", false, "enable pprof server on 127.0.0.1:6060")
+	cmdFlags.StringVar(&config.HTTPServer, "http-server", "127.0.0.1:6060", "Listen HTTP request for pprof and stats on 127.0.0.1:6060")
 	cmdFlags.BoolVar(&config.LeaveMessagesOrphanedAtShutdown, "leave-messages-orphaned-at-shutdown", true, "leave messages orphaned at shutdown")
 
 	if err := cmdFlags.Parse(args); err != nil {
@@ -59,10 +60,11 @@ func (c *ServerCommand) Run(args []string) int {
 		return 1
 	}
 
-	if config.EnablePProf {
-		log.Println("server: launching pprof http server on 127.0.0.1:6060")
+	if config.HTTPServer != "" {
+		http.HandleFunc("/_stats", stats_api.Handler)
+		log.Println("server: launching http server on ", config.HTTPServer)
 		go func() {
-			log.Println(http.ListenAndServe("127.0.0.1:6060", nil))
+			log.Println(http.ListenAndServe(config.HTTPServer, nil))
 		}()
 	}
 
