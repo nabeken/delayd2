@@ -22,7 +22,8 @@ func (s *Sender) SendMessage(duration int, relayTo, payload string) error {
 		sqsMessageDurationKey: duration,
 		sqsMessageRelayToKey:  relayTo,
 	}
-	return s.queue.SendMessage(payload, option.MessageAttributes(attrs))
+	_, err := s.queue.SendMessage(payload, option.MessageAttributes(attrs))
+	return err
 }
 
 func (s *Sender) SendMessageBatch(duration int, relayTo string, payloads []string) error {
