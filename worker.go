@@ -124,11 +124,12 @@ func (w *Worker) Run() error {
 	w.runWorker(func() { w.markActiveWorker(ctx) })
 	w.runWorker(func() { w.releaseWorker(ctx) })
 
-	log.Print("worker: starting delayd2 process")
+	log.Print("worker: started delayd2 process")
 
 	<-w.shutdownCh
 	log.Print("worker: receiving shutdown signal. waiting for the process finished.")
 	cancel()
+	close(w.relayCh)
 
 	w.stoppped.Wait()
 	log.Print("worker: the process finished.")
@@ -307,11 +308,11 @@ func (w *Worker) relayWorker(ctx context.Context) {
 
 		select {
 		case <-ctx.Done():
+			log.Print("worker: shutting relay worker")
 			return
 		default:
 		}
 	}
-	log.Print("relayworker: closed")
 }
 
 func (w *Worker) releaseBatch(rj releaseJob) int64 {
