@@ -2,6 +2,7 @@
 package delayd2
 
 import (
+	"context"
 	"log"
 	"runtime"
 	"sync"
@@ -103,32 +104,36 @@ func (w *Worker) Run() error {
 		}
 	}()
 
+	baseCtx := context.Background()
+	ctx, cancel := context.WithCancel(baseCtx)
+
 	nCPU := runtime.NumCPU()
 	for i := 0; i < nCPU*w.config.NumConsumerFactor; i++ {
 		log.Print("worker: launching consumer process")
-		w.runWorker(func() { w.handleConsume() })
+		w.runWorker(func() { w.consumeWorker(ctx) })
 
 	}
 
 	for i := 0; i < nCPU*w.config.NumRelayFactor; i++ {
 		log.Print("worker: launching relay worker process")
-		w.runWorker(func() { w.relayWorker() })
+		w.runWorker(func() { w.relayWorker(ctx) })
 	}
 
-	w.runWorker(func() { w.handleAdoptOrphans() })
-	w.runWorker(func() { w.handleKeepAlive() })
-	w.runWorker(func() { w.handleMarkActive() })
-	w.runWorker(func() { w.handleRelease() })
+	w.runWorker(func() { w.adoptOrphansWorker(ctx) })
+	w.runWorker(func() { w.keepAliveWorker(ctx) })
+	w.runWorker(func() { w.markActiveWorker(ctx) })
+	w.runWorker(func() { w.releaseWorker(ctx) })
 
-	log.Print("worker: starting delayd2 process")
+	log.Print("worker: started delayd2 process")
 
-	select {
-	case <-w.shutdownCh:
-		log.Print("worker: receiving shutdown signal. waiting for the process finished.")
-	}
+	<-w.shutdownCh
+	log.Print("worker: receiving shutdown signal. waiting for the process finished.")
+	cancel()
+	close(w.relayCh)
 
 	w.stoppped.Wait()
 	log.Print("worker: the process finished.")
+
 	return nil
 }
 
@@ -140,10 +145,10 @@ func (w *Worker) consume() (int64, error) {
 	return w.consumer.ConsumeMessages()
 }
 
-func (w *Worker) handleKeepAlive() {
+func (w *Worker) keepAliveWorker(ctx context.Context) {
 	for range time.Tick(1 * time.Second) {
 		select {
-		case <-w.shutdownCh:
+		case <-ctx.Done():
 			log.Print("worker: shutting down keepalive worker")
 			return
 		default:
@@ -155,11 +160,11 @@ func (w *Worker) handleKeepAlive() {
 	}
 }
 
-// handleConsume consumes messages in SQS.
-func (w *Worker) handleConsume() {
+// consumeWorker consumes messages in SQS.
+func (w *Worker) consumeWorker(ctx context.Context) {
 	for {
 		select {
-		case <-w.shutdownCh:
+		case <-ctx.Done():
 			log.Print("worker: shutting down consuming worker")
 			return
 		default:
@@ -180,19 +185,17 @@ func (w *Worker) handleConsume() {
 	}
 }
 
-func (w *Worker) handleAdoptOrphans() {
+func (w *Worker) adoptOrphansWorker(ctx context.Context) {
 	for range time.Tick(10 * time.Second) {
 		select {
-		case <-w.shutdownCh:
+		case <-ctx.Done():
 			log.Print("worker: shutting down adopting worker")
 			return
 		default:
 		}
 
 		begin := time.Now()
-
 		n, err := w.driver.AdoptOrphans()
-
 		end := time.Now()
 
 		if err != nil {
@@ -210,20 +213,18 @@ func (w *Worker) markActive(begin time.Time) (int64, error) {
 	return w.driver.MarkActive(begin)
 }
 
-// handleMarkActive marks coming messages in queue.
-func (w *Worker) handleMarkActive() {
+// markActiveWorker marks coming messages in queue.
+func (w *Worker) markActiveWorker(ctx context.Context) {
 	for range time.Tick(10 * time.Millisecond) {
 		select {
-		case <-w.shutdownCh:
+		case <-ctx.Done():
 			log.Print("worker: shutting down marking worker")
 			return
 		default:
 		}
 
 		begin := time.Now().Truncate(time.Second)
-
 		n, err := w.markActive(begin)
-
 		end := time.Now()
 
 		if err != nil {
@@ -238,14 +239,12 @@ func (w *Worker) handleMarkActive() {
 	}
 }
 
-// handleRelease releases messages that is ready to fire.
-func (w *Worker) handleRelease() {
+// releaseWorker releases messages that is ready to fire.
+func (w *Worker) releaseWorker(ctx context.Context) {
 	for range time.Tick(10 * time.Millisecond) {
 		select {
-		case <-w.shutdownCh:
+		case <-ctx.Done():
 			log.Print("worker: shutting down releasing worker")
-			close(w.relayCh)
-			log.Print("worker: relayCh closed")
 			return
 		default:
 		}
@@ -296,7 +295,7 @@ func (w *Worker) release() error {
 	return nil
 }
 
-func (w *Worker) relayWorker() {
+func (w *Worker) relayWorker(ctx context.Context) {
 	for rj := range w.relayCh {
 		begin := time.Now()
 		n := w.releaseBatch(rj)
@@ -306,8 +305,14 @@ func (w *Worker) relayWorker() {
 			log.Printf("worker: %d messages relayed in %s", n, end.Sub(begin))
 		}
 		rj.Done()
+
+		select {
+		case <-ctx.Done():
+			log.Print("worker: shutting relay worker")
+			return
+		default:
+		}
 	}
-	log.Print("relayworker: closed")
 }
 
 func (w *Worker) releaseBatch(rj releaseJob) int64 {
