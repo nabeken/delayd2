@@ -1,8 +1,8 @@
 package command
 
 import (
+	"context"
 	"database/sql"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -125,29 +125,26 @@ func (c *ServerCommand) Run(args []string) int {
 
 	w := delayd2.NewWorker(workerConfig, drv, consumer, relay)
 
-	errCh := make(chan error)
-	go func() {
-		errCh <- w.Run()
-	}()
+	// run in another goroutine
+	go func() { w.Run() }()
 
-	go func() {
-		select {
-		case <-c.ShutdownCh:
-			// we should wait until s.Stop returns for 10 seconds.
-			time.AfterFunc(time.Duration(config.ShutdownDuration)*time.Second, func() {
-				errCh <- errors.New("delayd2: Worker#Stop() does not return for 1 minute. existing...")
-			})
-			w.Stop()
-		}
-	}()
+	baseCtx := context.Background()
+	duration := time.Duration(config.ShutdownDuration) * time.Second
 
 	select {
-	case err := <-errCh:
-		if err != nil {
-			c.Ui.Error(err.Error())
-			return 1
-		}
+	case <-c.ShutdownCh:
+		// we should wait for config.ShutdownDuration seconds.
+		ctx, cancel := context.WithTimeout(baseCtx, duration)
+		err = w.Shutdown(ctx)
+		cancel()
 	}
+
+	if err != nil {
+		c.Ui.Error(fmt.Sprintf("Unable to shutdown within %s: %s", duration, err.Error()))
+		return 1
+	}
+
+	log.Printf("Shutdown completed")
 	return 0
 }
 

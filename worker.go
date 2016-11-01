@@ -131,14 +131,28 @@ func (w *Worker) Run() error {
 	cancel()
 	close(w.relayCh)
 
-	w.stoppped.Wait()
-	log.Print("worker: the process finished.")
-
 	return nil
 }
 
-func (w *Worker) Stop() {
+func (w *Worker) Shutdown(ctx context.Context) error {
+	// triggering Run() to finish workers
 	close(w.shutdownCh)
+
+	doneCh := make(chan struct{})
+	go func() {
+		w.stoppped.Wait()
+		close(doneCh)
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-doneCh:
+	}
+
+	log.Print("worker: the process finished.")
+
+	return nil
 }
 
 func (w *Worker) consume() (int64, error) {
