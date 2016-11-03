@@ -41,8 +41,6 @@ type Worker struct {
 
 	succededIDsCache *cache.Cache
 
-	relayCh chan releaseJob
-
 	// signaled from external
 	shutdownCh chan struct{}
 
@@ -62,7 +60,6 @@ func NewWorker(c *WorkerConfig, driver Driver, consumer *Consumer, relay *Relay)
 
 		config: c,
 
-		relayCh:    make(chan releaseJob, runtime.NumCPU()*c.NumRelayFactor),
 		shutdownCh: make(chan struct{}),
 	}
 }
@@ -111,12 +108,6 @@ func (w *Worker) Run() error {
 	for i := 0; i < nCPU*w.config.NumConsumerFactor; i++ {
 		log.Print("worker: launching consumer process")
 		w.runWorker(func() { w.consumeWorker(ctx) })
-
-	}
-
-	for i := 0; i < nCPU*w.config.NumRelayFactor; i++ {
-		log.Print("worker: launching relay worker process")
-		w.runWorker(func() { w.relayWorker(ctx) })
 	}
 
 	w.runWorker(func() { w.adoptOrphansWorker(ctx) })
@@ -129,7 +120,6 @@ func (w *Worker) Run() error {
 	<-w.shutdownCh
 	log.Print("worker: receiving shutdown signal. waiting for the process finished.")
 	cancel()
-	close(w.relayCh)
 
 	return nil
 }
@@ -253,26 +243,24 @@ func (w *Worker) markActiveWorker(ctx context.Context) {
 	}
 }
 
-// releaseWorker releases messages that is ready to fire.
+// releaseWorker releases and relays messages that is ready to fire.
 func (w *Worker) releaseWorker(ctx context.Context) {
-	for range time.Tick(10 * time.Millisecond) {
+	for range time.Tick(1000 * time.Millisecond) {
+		if err := w.release(); err != nil {
+			log.Printf("worker: unable to release messages: %s", err)
+			continue
+		}
+
 		select {
 		case <-ctx.Done():
 			log.Print("worker: shutting down releasing worker")
 			return
 		default:
 		}
-
-		if err := w.release(); err != nil {
-			log.Printf("worker: unable to release messages: %s", err)
-			continue
-		}
 	}
 }
 
 type releaseJob struct {
-	*sync.WaitGroup
-
 	RelayTo  string
 	Messages []releaseMessage
 }
@@ -285,9 +273,11 @@ type releaseMessage struct {
 // release releases active messages. It returns the number of released message n.
 func (w *Worker) release() error {
 	messages, err := w.driver.GetActiveMessages()
-
 	if err != nil {
 		return err
+	}
+	if len(messages) == 0 {
+		return nil
 	}
 
 	// we need QueueID to delete from queue
@@ -296,37 +286,27 @@ func (w *Worker) release() error {
 	var wg sync.WaitGroup
 	for relayTo, batchMsgs := range batchMap {
 		for _, rms := range batchMsgs {
-			wg.Add(1)
-			w.relayCh <- releaseJob{
-				WaitGroup: &wg,
-
+			rj := releaseJob{
 				RelayTo:  relayTo,
 				Messages: rms,
 			}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+
+				begin := time.Now()
+				n := w.releaseBatch(rj)
+				end := time.Now()
+
+				if n > 0 {
+					log.Printf("worker: %d messages relayed to %s in %s", n, relayTo, end.Sub(begin))
+				}
+			}()
 		}
 	}
+
 	wg.Wait()
 	return nil
-}
-
-func (w *Worker) relayWorker(ctx context.Context) {
-	for rj := range w.relayCh {
-		begin := time.Now()
-		n := w.releaseBatch(rj)
-		end := time.Now()
-
-		if n > 0 {
-			log.Printf("worker: %d messages relayed in %s", n, end.Sub(begin))
-		}
-		rj.Done()
-
-		select {
-		case <-ctx.Done():
-			log.Print("worker: shutting relay worker")
-			return
-		default:
-		}
-	}
 }
 
 func (w *Worker) releaseBatch(rj releaseJob) int64 {
