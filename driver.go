@@ -193,6 +193,8 @@ func (d *pqDriver) MarkActive(now time.Time) (int64, error) {
 		  AND NOT EXISTS (
 			  SELECT 1 FROM active WHERE queue_id = queue.queue_id
 		  )
+		ORDER BY queue_id
+		LIMIT 10000
 
 	;`, d.workerID, now)
 	if err != nil {
