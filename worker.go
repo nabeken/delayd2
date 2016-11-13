@@ -81,26 +81,6 @@ func (w *Worker) Run() error {
 		return err
 	}
 
-	defer func() {
-		log.Print("worker: resetting aborted messages remaining in active queue")
-		if _, err := w.driver.ResetActive(); err != nil {
-			log.Print("worker: unable to reset messages in active queue:", err)
-		}
-
-		if w.config.LeaveMessagesOrphanedAtShutdown {
-			log.Print("worker: leaving messages as orphaned")
-
-			if err := w.driver.MarkOrphaned(); err != nil {
-				log.Print("worker: unable to mark messages as orphaned:", err)
-			}
-		}
-
-		log.Print("worker: deregistering delayd2 worker process")
-		if err := w.driver.DeregisterSession(); err != nil {
-			log.Print("worker: unable to deregister session:", err)
-		}
-	}()
-
 	baseCtx := context.Background()
 	ctx, cancel := context.WithCancel(baseCtx)
 
@@ -130,7 +110,33 @@ func (w *Worker) Shutdown(ctx context.Context) error {
 
 	doneCh := make(chan struct{})
 	go func() {
+		log.Print("worker: starting shutdown procedures...")
+
 		w.stoppped.Wait()
+
+		log.Print("worker: removing cached messages from the database")
+		if err := w.removeOngoingMessages(ctx); err != nil {
+			log.Print("worker: unable to remove cached messages from the database:", err)
+		}
+
+		log.Print("worker: resetting aborted messages remaining in active queue")
+		if _, err := w.driver.ResetActive(); err != nil {
+			log.Print("worker: unable to reset messages in active queue:", err)
+		}
+
+		if w.config.LeaveMessagesOrphanedAtShutdown {
+			log.Print("worker: leaving messages as orphaned")
+
+			if err := w.driver.MarkOrphaned(); err != nil {
+				log.Print("worker: unable to mark messages as orphaned:", err)
+			}
+		}
+
+		log.Print("worker: deregistering delayd2 worker process")
+		if err := w.driver.DeregisterSession(); err != nil {
+			log.Print("worker: unable to deregister session:", err)
+		}
+
 		close(doneCh)
 	}()
 
@@ -368,6 +374,40 @@ func (w *Worker) removeMessages(ids ...string) error {
 	// When we succeeded to remove messages, the messages will not appear again so it's safe.
 	for _, id := range ids {
 		w.succededIDsCache.Delete(id)
+	}
+
+	return nil
+}
+
+// removeOngoingMessages tries to remove all messages in the cache from the database.
+func (w *Worker) removeOngoingMessages(ctx context.Context) error {
+	for {
+		cachedIDs := w.succededIDsCache.Items()
+
+		if len(cachedIDs) == 0 {
+			log.Print("worker: all cached messages have been removed from the database")
+			return nil
+		}
+
+		log.Print("worker: removing %d cached but not removed from the database...", len(cachedIDs))
+
+		ids := make([]string, 0, len(cachedIDs))
+
+		for id := range cachedIDs {
+			ids = append(ids, id)
+		}
+
+		if err := w.removeMessages(ids...); err != nil {
+			log.Printf("worker: unable to remove from the database. retrying...")
+			time.Sleep(1 * time.Second)
+		}
+
+		select {
+		case <-ctx.Done():
+			log.Print("worker: shutting removeOngoingMessages worker")
+			return ctx.Err()
+		default:
+		}
 	}
 
 	return nil
