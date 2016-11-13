@@ -390,7 +390,7 @@ func (w *Worker) removeOngoingMessages(ctx context.Context) error {
 			return nil
 		}
 
-		log.Print("worker: removing %d cached but not removed from the database...", len(cachedIDs))
+		log.Printf("worker: removing %d cached but not removed from the database...", len(cachedIDs))
 
 		ids := make([]string, 0, len(cachedIDs))
 
