@@ -305,13 +305,19 @@ func (w *Worker) releaseBatch(relayTo string, messages []releaseMessage) int64 {
 	for _, m := range messages {
 		if _, found := w.succededIDsCache.Get(m.QueueID); found {
 			// skip since we already relayed
+			// but we need to try to remove it from the database
 			log.Printf("worker: %s is in the cache so continueing...", m.QueueID)
+
+			if err := w.removeMessages(m.QueueID); err != nil {
+				log.Printf("worker: unable to remove %s in the database but continue.", m.QueueID)
+			} else {
+				log.Printf("worker: %s has been removed in the database.", m.QueueID)
+			}
 			continue
 		}
 		payloads = append(payloads, m.Payload)
 	}
 
-	var n int64
 	failedIndex := make(map[int]struct{})
 	if len(payloads) > 0 {
 		if err := w.relay.Relay(relayTo, payloads); err != nil {
@@ -343,18 +349,28 @@ func (w *Worker) releaseBatch(relayTo string, messages []releaseMessage) int64 {
 		w.succededIDsCache.Set(m.QueueID, struct{}{}, cache.DefaultExpiration)
 	}
 
-	if err := w.driver.RemoveMessages(succededIDs); err != nil {
+	var n int64
+	if err := w.removeMessages(succededIDs...); err != nil {
 		log.Printf("worker: unable to remove messages from queue: %s", err)
 	} else {
-		// reset succededIDs here since we succeeded to remove messages from the database
-		// When we succeeded to remove messages, the messages will not appear again so it's safe.
-		for _, id := range succededIDs {
-			w.succededIDsCache.Delete(id)
-		}
 		n += int64(len(succededIDs))
 	}
 
 	return n
+}
+
+func (w *Worker) removeMessages(ids ...string) error {
+	if err := w.driver.RemoveMessages(ids...); err != nil {
+		return err
+	}
+
+	// reset cache here since we succeeded to remove messages from the database.
+	// When we succeeded to remove messages, the messages will not appear again so it's safe.
+	for _, id := range ids {
+		w.succededIDsCache.Delete(id)
+	}
+
+	return nil
 }
 
 func BuildBatchMap(messages []*QueueMessage) map[string][][]releaseMessage {

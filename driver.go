@@ -27,7 +27,7 @@ type Driver interface {
 	MarkActive(time.Time) (int64, error)
 	MarkOrphaned() error
 	AdoptOrphans() (int64, error)
-	RemoveMessages([]string) error
+	RemoveMessages(...string) error
 	GetActiveMessages() ([]*QueueMessage, error)
 }
 
@@ -201,7 +201,7 @@ func (d *pqDriver) MarkActive(now time.Time) (int64, error) {
 	return ret.RowsAffected()
 }
 
-func (d *pqDriver) RemoveMessages(queueIDs []string) error {
+func (d *pqDriver) RemoveMessages(queueIDs ...string) error {
 	ids := make([]interface{}, len(queueIDs))
 	for i := range queueIDs {
 		ids[i] = queueIDs[i]
