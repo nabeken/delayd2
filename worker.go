@@ -284,11 +284,12 @@ func (w *Worker) release() error {
 	// we need QueueID to delete from the queue in the database
 	batchMap := BuildBatchMap(messages)
 
+	// FIXME: we should limit the number of goroutine here...
 	var wg sync.WaitGroup
 	for relayTo, batchMsgs := range batchMap {
 		for _, rms := range batchMsgs {
 			wg.Add(1)
-			go func() {
+			go func(rms []releaseMessage) {
 				defer wg.Done()
 
 				begin := time.Now()
@@ -298,7 +299,7 @@ func (w *Worker) release() error {
 				if n > 0 {
 					log.Printf("worker: %d messages relayed to %s in %s", n, relayTo, end.Sub(begin))
 				}
-			}()
+			}(rms)
 		}
 	}
 
