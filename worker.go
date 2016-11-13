@@ -260,11 +260,6 @@ func (w *Worker) releaseWorker(ctx context.Context) {
 	}
 }
 
-type releaseJob struct {
-	RelayTo  string
-	Messages []releaseMessage
-}
-
 type releaseMessage struct {
 	QueueID string
 	Payload string
@@ -280,22 +275,18 @@ func (w *Worker) release() error {
 		return nil
 	}
 
-	// we need QueueID to delete from queue
+	// we need QueueID to delete from the queue in the database
 	batchMap := BuildBatchMap(messages)
 
 	var wg sync.WaitGroup
 	for relayTo, batchMsgs := range batchMap {
 		for _, rms := range batchMsgs {
-			rj := releaseJob{
-				RelayTo:  relayTo,
-				Messages: rms,
-			}
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
 
 				begin := time.Now()
-				n := w.releaseBatch(rj)
+				n := w.releaseBatch(relayTo, rms)
 				end := time.Now()
 
 				if n > 0 {
@@ -309,12 +300,12 @@ func (w *Worker) release() error {
 	return nil
 }
 
-func (w *Worker) releaseBatch(rj releaseJob) int64 {
-	payloads := make([]string, 0, len(rj.Messages))
-	for _, m := range rj.Messages {
+func (w *Worker) releaseBatch(relayTo string, messages []releaseMessage) int64 {
+	payloads := make([]string, 0, len(messages))
+	for _, m := range messages {
 		if _, found := w.succededIDsCache.Get(m.QueueID); found {
 			// skip since we already relayed
-			log.Printf("worker: seeing queue_id in the cache so continueing...")
+			log.Printf("worker: %s is in the cache so continueing...", m.QueueID)
 			continue
 		}
 		payloads = append(payloads, m.Payload)
@@ -323,7 +314,7 @@ func (w *Worker) releaseBatch(rj releaseJob) int64 {
 	var n int64
 	failedIndex := make(map[int]struct{})
 	if len(payloads) > 0 {
-		if err := w.relay.Relay(rj.RelayTo, payloads); err != nil {
+		if err := w.relay.Relay(relayTo, payloads); err != nil {
 			// only print log here in batch operation
 			// TODO: a dead letter queue support
 			berrs, batchOk := queue.IsBatchError(err)
@@ -341,8 +332,8 @@ func (w *Worker) releaseBatch(rj releaseJob) int64 {
 		}
 	}
 
-	succededIDs := make([]string, 0, len(rj.Messages))
-	for i, m := range rj.Messages {
+	succededIDs := make([]string, 0, len(messages))
+	for i, m := range messages {
 		if _, failed := failedIndex[i]; failed {
 			continue
 		}
