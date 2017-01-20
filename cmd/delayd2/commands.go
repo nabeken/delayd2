@@ -19,7 +19,7 @@ func Commands(meta *command.Meta) map[string]cli.CommandFactory {
 		},
 		"bench": func() (cli.Command, error) {
 			return &command.BenchCommand{
-				Meta:       *meta,
+				Meta: *meta,
 			}, nil
 		},
 		"session": func() (cli.Command, error) {
