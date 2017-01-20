@@ -1,17 +1,17 @@
 package command
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"strings"
-	"sync"
 	"time"
 
-	_ "github.com/lib/pq"
-
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/cybozu-go/cmd"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/nabeken/aws-go-sqs/queue"
 	"github.com/nabeken/aws-go-sqs/queue/option"
@@ -26,8 +26,6 @@ type BenchRecvConfig struct {
 
 type BenchCommand struct {
 	Meta
-
-	ShutdownCh <-chan struct{}
 }
 
 func (c *BenchCommand) Recv(args []string) int {
@@ -39,8 +37,6 @@ func (c *BenchCommand) Recv(args []string) int {
 	}
 
 	cmdFlags := flag.NewFlagSet("batch recv", flag.ContinueOnError)
-	cmdFlags.IntVar(&config.NumberOfMessages, "n", 1000, "number of messages")
-
 	if err := cmdFlags.Parse(args); err != nil {
 		c.Ui.Error(c.Help())
 		return 1
@@ -54,56 +50,52 @@ func (c *BenchCommand) Recv(args []string) int {
 	}
 
 	log.Print("bench: --- Configuration ---")
-	log.Printf("bench: Number of messages to receive: %d", config.NumberOfMessages)
 	log.Printf("bench: DELAYD2_QUEUE_NAME=%s", config.QueueName)
 
-	errCh := make(chan error)
-
-	log.Print("bench: starting")
-	go func() {
-		payloads := map[string]struct{}{}
+	log.Print("bench: Start to drain and don't stop until you press C-c.")
+	cmd.Go(func(ctx context.Context) error {
 		for {
-			log.Printf("%d messages processed", len(payloads))
-			if len(payloads) >= config.NumberOfMessages {
-				break
+			select {
+			case <-ctx.Done():
+				log.Print("bench: Stopping now...")
+				return ctx.Err()
+			default:
 			}
 
 			messages, err := q.ReceiveMessage(
 				option.MaxNumberOfMessages(10),
 				option.UseAllAttribute(),
 			)
+
 			// continue even if we get an error
 			if err != nil {
-				log.Printf("unable to receive messages but continuing...: %s", err)
+				log.Printf("bench: Unable to receive messages but continuing...: %s", err)
+				continue
+			}
+
+			if len(messages) == 0 {
 				continue
 			}
 
 			recipientHandles := make([]*string, 0, 10)
 			for _, m := range messages {
-				payloads[*m.Body] = struct{}{}
+				fmt.Println(aws.StringValue(m.MessageId))
 				recipientHandles = append(recipientHandles, m.ReceiptHandle)
 			}
 
 			if err := q.DeleteMessageBatch(recipientHandles...); err != nil {
-				log.Printf("unable to delete message but continuing...: %s", err)
+				log.Printf("bench: Unable to delete message but continuing...: %s", err)
 			}
 		}
+	})
 
-		log.Printf("%d messages received", config.NumberOfMessages)
-		errCh <- nil
-	}()
-
-	select {
-	case <-errCh:
-		if err != nil {
-			c.Ui.Error(fmt.Sprintf("Unable to receive messages: %s", err))
-			return 1
-		}
-		log.Print("bench: done.")
-	case <-c.ShutdownCh:
-		log.Fatal("signal received.")
+	err = cmd.Wait()
+	if err != nil && !cmd.IsSignaled(err) {
+		c.Ui.Error(fmt.Sprintf("Unable to receive messages: %s", err))
+		return 1
 	}
 
+	log.Print("bench: Done.")
 	return 0
 }
 
@@ -150,7 +142,7 @@ func (c *BenchCommand) Send(args []string) int {
 
 	s := delayd2.NewSender(q)
 
-	log.Print("bench: starting")
+	log.Print("bench: Starting to send")
 	payloads := make([]string, config.NumberOfMessages)
 	for i := 0; i < config.NumberOfMessages; i++ {
 		payloads[i] = fmt.Sprintf("%d %d", i, time.Now().Unix())
@@ -158,38 +150,28 @@ func (c *BenchCommand) Send(args []string) int {
 
 	tasks := DistributeN(config.Concurrency, payloads)
 
-	var wg sync.WaitGroup
-	wg.Add(len(tasks))
-
 	begin := time.Now()
-	for _, task := range tasks {
-		go func(t []string) {
-			defer wg.Done()
 
-			log.Print("launching worker goroutine")
-			if err := s.SendMessageBatch(config.Duration, config.TargetQueueName, t); err != nil {
-				log.Print(err)
-				return
-			}
-		}(task)
+	for i, task := range tasks {
+		n := i + 1
+		t := task
+		cmd.Go(func(ctx context.Context) error {
+			log.Printf("launching worker goroutine#%d", n)
+			return s.SendMessageBatch(config.Duration, config.TargetQueueName, t)
+		})
 	}
 
-	doneCh := make(chan struct{})
-	go func() {
-		wg.Wait()
-		end := time.Now()
-		log.Printf("%d messages sent in %s", len(payloads), end.Sub(begin))
-		close(doneCh)
-	}()
+	cmd.Stop()
 
-	select {
-	case <-doneCh:
-		log.Print("bench: done.")
-	case <-c.ShutdownCh:
-		c.Ui.Error("signal received")
+	err = cmd.Wait()
+	end := time.Now()
+
+	if err != nil && !cmd.IsSignaled(err) {
+		c.Ui.Error(fmt.Sprintf("Unable to send messages: %s", err))
 		return 1
 	}
 
+	log.Printf("bench: %d messages sent in %s", len(payloads), end.Sub(begin))
 	return 0
 }
 
