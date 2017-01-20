@@ -8,6 +8,7 @@ COPY . /go/src/github.com/nabeken/delayd2
 
 RUN go-wrapper download -d \
   github.com/aws/aws-sdk-go \
+  github.com/cybozu-go/cmd \
   github.com/hashicorp/errwrap \
   github.com/hashicorp/go-multierror \
   github.com/kelseyhightower/envconfig \
