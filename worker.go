@@ -41,11 +41,11 @@ type Worker struct {
 
 	succededIDsCache *cache.Cache
 
-	// signaled from external
-	shutdownCh chan struct{}
-
 	// wait for all worker goroutine to be finished
 	stoppped sync.WaitGroup
+
+	// signaled from external
+	shutdownCh chan struct{}
 }
 
 // NewWorker creates a new worker.
@@ -72,17 +72,14 @@ func (w *Worker) runWorker(f func()) {
 	}()
 }
 
-// Run starts the worker process.
-func (w *Worker) Run() error {
+// Run starts the worker process. It is not blocked.
+func (w *Worker) Run(ctx context.Context) error {
 	log.Print("worker: starting delayd2 worker process")
 
 	log.Print("worker: registering delayd2 worker process")
 	if err := w.driver.RegisterSession(); err != nil {
 		return err
 	}
-
-	baseCtx := context.Background()
-	ctx, cancel := context.WithCancel(baseCtx)
 
 	nCPU := runtime.NumCPU()
 	for i := 0; i < nCPU*w.config.NumConsumerFactor; i++ {
@@ -99,19 +96,18 @@ func (w *Worker) Run() error {
 
 	<-w.shutdownCh
 	log.Print("worker: receiving shutdown signal. waiting for the process finished.")
-	cancel()
 
 	return nil
 }
 
 func (w *Worker) Shutdown(ctx context.Context) error {
-	// triggering Run() to finish workers
+	// unblock Run()
 	close(w.shutdownCh)
 
 	doneCh := make(chan struct{})
 	go func() {
 		log.Print("worker: starting shutdown procedures...")
-
+		log.Print("worker: waiting for all goroutines to be done...")
 		w.stoppped.Wait()
 
 		log.Print("worker: removing cached messages from the database")

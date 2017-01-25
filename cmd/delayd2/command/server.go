@@ -13,10 +13,9 @@ import (
 
 	_ "net/http/pprof"
 
-	_ "github.com/lib/pq"
-
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/cybozu-go/cmd"
 	"github.com/fukata/golang-stats-api-handler"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/nabeken/aws-go-sqs/queue"
@@ -39,8 +38,6 @@ type ServerConfig struct {
 
 type ServerCommand struct {
 	Meta
-
-	ShutdownCh <-chan struct{}
 }
 
 func (c *ServerCommand) Run(args []string) int {
@@ -124,23 +121,26 @@ func (c *ServerCommand) Run(args []string) int {
 	}
 
 	w := delayd2.NewWorker(workerConfig, drv, consumer, relay)
+	cmd.Go(func(ctx context.Context) error {
+		return w.Run(ctx)
+	})
 
-	// run in another goroutine
-	go func() { w.Run() }()
+	cmd.Go(func(ctx context.Context) error {
+		<-ctx.Done()
 
-	baseCtx := context.Background()
-	duration := time.Duration(config.ShutdownDuration) * time.Second
+		log.Println("Shutting down the server...")
+		duration := time.Duration(config.ShutdownDuration) * time.Second
 
-	select {
-	case <-c.ShutdownCh:
 		// we should wait for config.ShutdownDuration seconds.
-		ctx, cancel := context.WithTimeout(baseCtx, duration)
+		ctx, cancel := context.WithTimeout(context.Background(), duration)
 		err = w.Shutdown(ctx)
 		cancel()
-	}
+		return nil
+	})
 
-	if err != nil {
-		c.Ui.Error(fmt.Sprintf("Unable to shutdown within %s: %s", duration, err.Error()))
+	err = cmd.Wait()
+	if err != nil && !cmd.IsSignaled(err) {
+		c.Ui.Error(fmt.Sprintf("Unable to shutdown: %s", err.Error()))
 		return 1
 	}
 

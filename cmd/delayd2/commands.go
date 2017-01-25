@@ -1,10 +1,6 @@
 package main
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
-
 	"github.com/mitchellh/cli"
 	"github.com/nabeken/delayd2/cmd/delayd2/command"
 )
@@ -13,8 +9,7 @@ func Commands(meta *command.Meta) map[string]cli.CommandFactory {
 	return map[string]cli.CommandFactory{
 		"server": func() (cli.Command, error) {
 			return &command.ServerCommand{
-				Meta:       *meta,
-				ShutdownCh: makeShutdownCh(),
+				Meta: *meta,
 			}, nil
 		},
 		"bench": func() (cli.Command, error) {
@@ -42,19 +37,4 @@ func Commands(meta *command.Meta) map[string]cli.CommandFactory {
 			}, nil
 		},
 	}
-}
-
-func makeShutdownCh() <-chan struct{} {
-	ch := make(chan struct{})
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		for {
-			<-sigCh
-			ch <- struct{}{}
-		}
-	}()
-
-	return ch
 }
