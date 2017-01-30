@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cybozu-go/cmd"
 	"github.com/nabeken/aws-go-sqs/queue"
 	"github.com/pmylund/go-cache"
 )
@@ -41,15 +42,11 @@ type Worker struct {
 
 	succededIDsCache *cache.Cache
 
-	// wait for all worker goroutine to be finished
-	stoppped sync.WaitGroup
-
-	// signaled from external
-	shutdownCh chan struct{}
+	env *cmd.Environment
 }
 
 // NewWorker creates a new worker.
-func NewWorker(c *WorkerConfig, driver Driver, consumer *Consumer, relay *Relay) *Worker {
+func NewWorker(e *cmd.Environment, c *WorkerConfig, driver Driver, consumer *Consumer, relay *Relay) *Worker {
 	return &Worker{
 		driver:   driver,
 		consumer: consumer,
@@ -58,22 +55,20 @@ func NewWorker(c *WorkerConfig, driver Driver, consumer *Consumer, relay *Relay)
 		// Cache succededIDs to prepare for transient errors in the database (e.g. failover/network problems)
 		succededIDsCache: cache.New(15*time.Minute, 1*time.Minute),
 
+		env:    e,
 		config: c,
-
-		shutdownCh: make(chan struct{}),
 	}
 }
 
-func (w *Worker) runWorker(f func()) {
-	w.stoppped.Add(1)
-	go func() {
-		f()
-		w.stoppped.Done()
-	}()
+func (w *Worker) runWorker(f func(ctx context.Context)) {
+	w.env.Go(func(ctx context.Context) error {
+		f(ctx)
+		return nil
+	})
 }
 
 // Run starts the worker process. It is not blocked.
-func (w *Worker) Run(ctx context.Context) error {
+func (w *Worker) Run() error {
 	log.Print("worker: starting delayd2 worker process")
 
 	log.Print("worker: registering delayd2 worker process")
@@ -84,31 +79,25 @@ func (w *Worker) Run(ctx context.Context) error {
 	nCPU := runtime.NumCPU()
 	for i := 0; i < nCPU*w.config.NumConsumerFactor; i++ {
 		log.Print("worker: launching consumer process")
-		w.runWorker(func() { w.consumeWorker(ctx) })
+		w.runWorker(w.consumeWorker)
 	}
 
-	w.runWorker(func() { w.adoptOrphansWorker(ctx) })
-	w.runWorker(func() { w.keepAliveWorker(ctx) })
-	w.runWorker(func() { w.markActiveWorker(ctx) })
-	w.runWorker(func() { w.releaseWorker(ctx) })
+	w.runWorker(w.adoptOrphansWorker)
+	w.runWorker(w.keepAliveWorker)
+	w.runWorker(w.markActiveWorker)
+	w.runWorker(w.releaseWorker)
 
 	log.Print("worker: started delayd2 process")
-
-	<-w.shutdownCh
-	log.Print("worker: receiving shutdown signal. waiting for the process finished.")
 
 	return nil
 }
 
 func (w *Worker) Shutdown(ctx context.Context) error {
-	// unblock Run()
-	close(w.shutdownCh)
-
 	doneCh := make(chan struct{})
 	go func() {
 		log.Print("worker: starting shutdown procedures...")
 		log.Print("worker: waiting for all goroutines to be done...")
-		w.stoppped.Wait()
+		w.env.Wait()
 
 		log.Print("worker: removing cached messages from the database")
 		if err := w.removeOngoingMessages(ctx); err != nil {

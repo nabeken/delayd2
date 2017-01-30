@@ -120,13 +120,17 @@ func (c *ServerCommand) Run(args []string) int {
 		LeaveMessagesOrphanedAtShutdown: config.LeaveMessagesOrphanedAtShutdown,
 	}
 
-	w := delayd2.NewWorker(workerConfig, drv, consumer, relay)
-	cmd.Go(func(ctx context.Context) error {
-		return w.Run(ctx)
+	e := cmd.NewEnvironment(context.Background())
+
+	w := delayd2.NewWorker(e, workerConfig, drv, consumer, relay)
+
+	e.Go(func(ctx context.Context) error {
+		return w.Run()
 	})
 
 	cmd.Go(func(ctx context.Context) error {
 		<-ctx.Done()
+		e.Cancel(nil)
 
 		log.Println("Shutting down the server...")
 		duration := time.Duration(config.ShutdownDuration) * time.Second
