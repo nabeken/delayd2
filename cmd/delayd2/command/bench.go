@@ -22,6 +22,7 @@ type BenchRecvConfig struct {
 	QueueName string `envconfig:"queue_name"`
 
 	NumberOfMessages int
+	Concurrency      int
 }
 
 type BenchCommand struct {
@@ -37,6 +38,7 @@ func (c *BenchCommand) Recv(args []string) int {
 	}
 
 	cmdFlags := flag.NewFlagSet("batch recv", flag.ContinueOnError)
+	cmdFlags.IntVar(&config.Concurrency, "c", 5, "concurrency")
 	if err := cmdFlags.Parse(args); err != nil {
 		c.Ui.Error(c.Help())
 		return 1
@@ -53,41 +55,44 @@ func (c *BenchCommand) Recv(args []string) int {
 	log.Printf("bench: DELAYD2_QUEUE_NAME=%s", config.QueueName)
 
 	log.Print("bench: Start to drain and don't stop until you press C-c.")
-	cmd.Go(func(ctx context.Context) error {
-		for {
-			select {
-			case <-ctx.Done():
-				log.Print("bench: Stopping now...")
-				return ctx.Err()
-			default:
-			}
+	for i := 0; i < config.Concurrency; i++ {
+		log.Printf("bench: #%d Start to drain and don't stop until you press C-c.", i+1)
+		cmd.Go(func(ctx context.Context) error {
+			for {
+				select {
+				case <-ctx.Done():
+					log.Print("bench: Stopping now...")
+					return ctx.Err()
+				default:
+				}
 
-			messages, err := q.ReceiveMessage(
-				option.MaxNumberOfMessages(10),
-				option.UseAllAttribute(),
-			)
+				messages, err := q.ReceiveMessage(
+					option.MaxNumberOfMessages(10),
+					option.UseAllAttribute(),
+				)
 
-			// continue even if we get an error
-			if err != nil {
-				log.Printf("bench: Unable to receive messages but continuing...: %s", err)
-				continue
-			}
+				// continue even if we get an error
+				if err != nil {
+					log.Printf("bench: Unable to receive messages but continuing...: %s", err)
+					continue
+				}
 
-			if len(messages) == 0 {
-				continue
-			}
+				if len(messages) == 0 {
+					continue
+				}
 
-			recipientHandles := make([]*string, 0, 10)
-			for _, m := range messages {
-				fmt.Println(aws.StringValue(m.MessageId))
-				recipientHandles = append(recipientHandles, m.ReceiptHandle)
-			}
+				recipientHandles := make([]*string, 0, 10)
+				for _, m := range messages {
+					fmt.Println(aws.StringValue(m.MessageId))
+					recipientHandles = append(recipientHandles, m.ReceiptHandle)
+				}
 
-			if err := q.DeleteMessageBatch(recipientHandles...); err != nil {
-				log.Printf("bench: Unable to delete message but continuing...: %s", err)
+				if err := q.DeleteMessageBatch(recipientHandles...); err != nil {
+					log.Printf("bench: Unable to delete message but continuing...: %s", err)
+				}
 			}
-		}
-	})
+		})
+	}
 
 	err = cmd.Wait()
 	if err != nil && !cmd.IsSignaled(err) {
