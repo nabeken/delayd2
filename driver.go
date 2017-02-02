@@ -194,8 +194,6 @@ func (d *pqDriver) MarkActive(now time.Time) (int64, error) {
 			  SELECT 1 FROM active WHERE queue_id = queue.queue_id
 		  )
 		ORDER BY queue_id
-		LIMIT 10000
-
 	;`, d.workerID, now)
 	if err != nil {
 		return 0, err
@@ -219,6 +217,7 @@ func (d *pqDriver) RemoveMessages(queueIDs ...string) error {
 	return err
 }
 
+// GetActiveMessages retrieves 1000 active messages.
 func (d *pqDriver) GetActiveMessages() ([]*QueueMessage, error) {
 	rows, err := d.db.Query(`
 		SELECT queue.queue_id, queue.worker_id, queue.release_at, queue.relay_to, queue.payload
@@ -227,6 +226,7 @@ func (d *pqDriver) GetActiveMessages() ([]*QueueMessage, error) {
 		WHERE
 		  queue.worker_id = $1
 		ORDER BY queue.release_at
+		LIMIT 1000
 		;
 	`, d.workerID)
 

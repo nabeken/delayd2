@@ -3,17 +3,14 @@ package delayd2
 import (
 	"flag"
 	"fmt"
-	"os"
 	"testing"
-	"time"
 
-	"github.com/aws/aws-sdk-go/service/sqs"
-	"github.com/nabeken/aws-go-sqs/queue"
 	"github.com/stretchr/testify/assert"
 )
 
 var doInteg = flag.Bool("integ", false, "enable integration tests")
 
+/*
 func TestWorker(t *testing.T) {
 	assert := assert.New(t)
 
@@ -64,7 +61,8 @@ func TestWorker(t *testing.T) {
 		ID: drv.workerID,
 	}
 
-	w := NewWorker(workerConfig, drv, consumer, relay)
+	e := cmd.NewEnvironment(context.Background())
+	w := NewWorker(e, workerConfig, drv, consumer, relay)
 
 	var numMessages int64
 	for i := 0; i < 2; i++ {
@@ -96,6 +94,7 @@ func TestWorker(t *testing.T) {
 		assert.NoError(err)
 	}
 }
+*/
 
 func TestBuildBatchMap(t *testing.T) {
 	assert := assert.New(t)

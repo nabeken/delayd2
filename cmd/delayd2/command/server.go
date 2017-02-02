@@ -139,7 +139,7 @@ func (c *ServerCommand) Run(args []string) int {
 		ctx, cancel := context.WithTimeout(context.Background(), duration)
 		err = w.Shutdown(ctx)
 		cancel()
-		return nil
+		return err
 	})
 
 	err = cmd.Wait()
