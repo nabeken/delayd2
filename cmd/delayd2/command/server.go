@@ -13,6 +13,7 @@ import (
 
 	_ "net/http/pprof"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/cybozu-go/cmd"
@@ -100,7 +101,10 @@ func (c *ServerCommand) Run(args []string) int {
 	defer db.Close()
 
 	drv := delayd2.NewDriver(config.WorkerID, db)
-	sqsSvc := sqs.New(session.New())
+	conf := aws.NewConfig().WithHTTPClient(&http.Client{
+		Timeout: 1 * time.Minute,
+	})
+	sqsSvc := sqs.New(session.New(conf))
 
 	q, err := queue.New(sqsSvc, config.QueueName)
 	if err != nil {
