@@ -246,7 +246,7 @@ func (w *Worker) releaseDispatcher(ctx context.Context) {
 		case <-ctx.Done():
 			log.Print("worker: shutting down release dispatcher")
 			return
-		case <-time.Tick(1000 * time.Millisecond):
+		case <-time.Tick(10 * time.Millisecond):
 			messages, err := w.driver.GetActiveMessages()
 			if err != nil {
 				log.Printf("worker: unable to get active messages: %s", err)
