@@ -40,15 +40,15 @@ type releaseJob struct {
 type Worker struct {
 	config *WorkerConfig
 
+	env      *cmd.Environment
 	driver   Driver
 	consumer *Consumer
 	relay    *Relay
 
 	succededIDsCache *cache.Cache
 
-	releaseJobQueue chan *releaseJob
-
-	env *cmd.Environment
+	// semaphore for release workers
+	releaseSem chan struct{}
 }
 
 // NewWorker creates a new worker.
@@ -60,8 +60,6 @@ func NewWorker(e *cmd.Environment, c *WorkerConfig, driver Driver, consumer *Con
 
 		// Cache succededIDs to prepare for transient errors in the database (e.g. failover/network problems)
 		succededIDsCache: cache.New(15*time.Minute, 1*time.Minute),
-
-		releaseJobQueue: make(chan *releaseJob),
 
 		env:    e,
 		config: c,
@@ -90,9 +88,11 @@ func (w *Worker) Run() error {
 		w.runWorker(w.consumeWorker)
 	}
 
+	// initializing a semaphore for release workers
+	log.Print("worker: initializing a semaphore for release workers")
+	w.releaseSem = make(chan struct{}, nCPU*w.config.NumRelayFactor)
 	for i := 0; i < nCPU*w.config.NumRelayFactor; i++ {
-		log.Print("worker: launching release worker")
-		w.runWorker(w.releaseWorker)
+		w.releaseSem <- struct{}{}
 	}
 
 	w.runWorker(w.adoptOrphansWorker)
@@ -243,6 +243,9 @@ func (w *Worker) markActiveWorker(ctx context.Context) {
 func (w *Worker) releaseDispatcher(ctx context.Context) {
 	for {
 		select {
+		case <-ctx.Done():
+			log.Print("worker: shutting down release dispatcher")
+			return
 		case <-time.Tick(1000 * time.Millisecond):
 			messages, err := w.driver.GetActiveMessages()
 			if err != nil {
@@ -258,15 +261,19 @@ func (w *Worker) releaseDispatcher(ctx context.Context) {
 			batchMap := BuildBatchMap(messages)
 			for relayTo, batchMsgs := range batchMap {
 				for _, rms := range batchMsgs {
-					w.releaseJobQueue <- &releaseJob{
+					<-w.releaseSem
+					job := &releaseJob{
 						relayTo:  relayTo,
 						messages: rms,
 					}
+					go func(job *releaseJob) {
+						w.release(job)
+						w.releaseSem <- struct{}{}
+					}(job)
 				}
 			}
-		case <-ctx.Done():
-			log.Print("worker: shutting down release dispatcher")
-			return
+
+			// we must wait for all active messages to be released.
 		}
 	}
 }
@@ -276,70 +283,62 @@ type releaseMessage struct {
 	Payload string
 }
 
-func (w *Worker) releaseWorker(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			log.Print("worker: shutting down release worker")
-			return
-		case job := <-w.releaseJobQueue:
-			payloads := make([]string, 0, len(job.messages))
-			for _, m := range job.messages {
-				if _, found := w.succededIDsCache.Get(m.QueueID); found {
-					// skip since we already relayed
-					// but we need to try to remove it from the database
-					log.Printf("worker: %s is in the cache so continueing...", m.QueueID)
+func (w *Worker) release(job *releaseJob) {
+	payloads := make([]string, 0, len(job.messages))
+	for _, m := range job.messages {
+		if _, found := w.succededIDsCache.Get(m.QueueID); found {
+			// skip since we already relayed
+			// but we need to try to remove it from the database
+			log.Printf("worker: %s is in the cache so continueing...", m.QueueID)
 
-					if err := w.removeMessages(m.QueueID); err != nil {
-						log.Printf("worker: unable to remove %s in the database but continue.", m.QueueID)
-					} else {
-						log.Printf("worker: %s has been removed in the database.", m.QueueID)
-					}
-					continue
-				}
-				payloads = append(payloads, m.Payload)
-			}
-
-			failedIndex := make(map[int]struct{})
-			if len(payloads) > 0 {
-				if err := w.relay.Relay(job.relayTo, payloads); err != nil {
-					// only print log here in batch operation
-					// TODO: a dead letter queue support
-					berrs, batchOk := queue.IsBatchError(err)
-					if !batchOk {
-						log.Printf("worker: unable to send message due to non batch error. skipping: %s", err)
-						continue
-					}
-
-					for _, berr := range berrs {
-						if berr.SenderFault {
-							log.Printf("worker: unable to send message due to sender's fault: skipping: %s", berr.Message)
-						}
-						failedIndex[berr.Index] = struct{}{}
-					}
-				}
-			}
-
-			succededIDs := make([]string, 0, len(job.messages))
-			for i, m := range job.messages {
-				if _, failed := failedIndex[i]; failed {
-					continue
-				}
-				succededIDs = append(succededIDs, m.QueueID)
-
-				// remember succededIDs for a while to prevent us from relaying message in transient error
-				w.succededIDsCache.Set(m.QueueID, struct{}{}, cache.DefaultExpiration)
-			}
-
-			var n int64
-			if err := w.removeMessages(succededIDs...); err != nil {
-				log.Printf("worker: unable to remove messages from the database: %s", err)
+			if err := w.removeMessages(m.QueueID); err != nil {
+				log.Printf("worker: unable to remove %s in the database but continue.", m.QueueID)
 			} else {
-				n += int64(len(succededIDs))
+				log.Printf("worker: %s has been removed in the database.", m.QueueID)
 			}
-			log.Printf("worker: %d messages removed from the database", n)
+			continue
+		}
+		payloads = append(payloads, m.Payload)
+	}
+
+	failedIndex := make(map[int]struct{})
+	if len(payloads) > 0 {
+		if err := w.relay.Relay(job.relayTo, payloads); err != nil {
+			// only print log here in batch operation
+			// TODO: a dead letter queue support
+			berrs, batchOk := queue.IsBatchError(err)
+			if !batchOk {
+				log.Printf("worker: unable to send message due to non batch error. skipping: %s", err)
+				return
+			}
+
+			for _, berr := range berrs {
+				if berr.SenderFault {
+					log.Printf("worker: unable to send message due to sender's fault: skipping: %s", berr.Message)
+				}
+				failedIndex[berr.Index] = struct{}{}
+			}
 		}
 	}
+
+	succededIDs := make([]string, 0, len(job.messages))
+	for i, m := range job.messages {
+		if _, failed := failedIndex[i]; failed {
+			continue
+		}
+		succededIDs = append(succededIDs, m.QueueID)
+
+		// remember succededIDs for a while to prevent us from relaying message in transient error
+		w.succededIDsCache.Set(m.QueueID, struct{}{}, cache.DefaultExpiration)
+	}
+
+	var n int64
+	if err := w.removeMessages(succededIDs...); err != nil {
+		log.Printf("worker: unable to remove messages from the database: %s", err)
+	} else {
+		n += int64(len(succededIDs))
+	}
+	log.Printf("worker: %d messages removed from the database", n)
 }
 
 func (w *Worker) removeMessages(ids ...string) error {
