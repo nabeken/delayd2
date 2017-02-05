@@ -333,11 +333,11 @@ func (w *Worker) releaseWorker(ctx context.Context) {
 
 			var n int64
 			if err := w.removeMessages(succededIDs...); err != nil {
-				log.Printf("worker: unable to remove messages from queue: %s", err)
+				log.Printf("worker: unable to remove messages from the database: %s", err)
 			} else {
 				n += int64(len(succededIDs))
 			}
-			log.Printf("worker: %d messages from queue", n)
+			log.Printf("worker: %d messages removed from the database", n)
 		}
 	}
 }
