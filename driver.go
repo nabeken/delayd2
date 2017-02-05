@@ -219,7 +219,6 @@ func (d *pqDriver) RemoveMessages(queueIDs ...string) error {
 	return err
 }
 
-// GetActiveMessages retrieves 1000 active messages.
 func (d *pqDriver) GetActiveMessages() ([]*QueueMessage, error) {
 	rows, err := d.db.Query(`
 		SELECT queue.queue_id, queue.worker_id, queue.release_at, queue.relay_to, queue.payload
@@ -227,8 +226,6 @@ func (d *pqDriver) GetActiveMessages() ([]*QueueMessage, error) {
 		  queue INNER JOIN active USING (queue_id)
 		WHERE
 		  queue.worker_id = $1
-		ORDER BY queue.release_at
-		LIMIT 1000
 		;
 	`, d.workerID)
 
