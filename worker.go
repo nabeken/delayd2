@@ -49,21 +49,23 @@ type Worker struct {
 	succededIDsCache *cache.Cache
 
 	// semaphore for release workers
-	releaseSem chan struct{}
+	releaseSem  chan struct{}
+	releaseDone chan struct{}
 }
 
 // NewWorker creates a new worker.
 func NewWorker(e *cmd.Environment, c *WorkerConfig, driver Driver, consumer *Consumer, relay *Relay) *Worker {
 	return &Worker{
+		env:      e,
 		driver:   driver,
 		consumer: consumer,
 		relay:    relay,
+		config:   c,
 
 		// Cache succededIDs to prepare for transient errors in the database (e.g. failover/network problems)
 		succededIDsCache: cache.New(15*time.Minute, 1*time.Minute),
 
-		env:    e,
-		config: c,
+		releaseDone: make(chan struct{}),
 	}
 }
 
@@ -216,27 +218,29 @@ func (w *Worker) adoptOrphansWorker(ctx context.Context) {
 func (w *Worker) markActiveWorker(ctx context.Context) {
 	for {
 		select {
-		case <-time.Tick(10 * time.Millisecond):
-			begin := time.Now().Truncate(time.Second)
-			n, err := w.driver.MarkActive(begin)
-			end := time.Now()
-
-			if err != nil {
-				log.Printf("worker: unable to mark messages active: %s", err)
-				continue
-			}
-
-			if n > 0 {
-				log.Printf("worker: %d messages marked as active in %s", n, end.Sub(begin))
-				continue
-			}
-
-			// we're not so much busy now... just wait for a while
-			time.Sleep(1 * time.Second)
+		case <-w.releaseDone:
+			w.markActive()
+		case <-time.Tick(1 * time.Second):
+			w.markActive()
 		case <-ctx.Done():
 			log.Print("worker: shutting down marking worker")
 			return
 		}
+	}
+}
+
+func (w *Worker) markActive() {
+	begin := time.Now().Truncate(time.Second)
+	n, err := w.driver.MarkActive(begin)
+	end := time.Now()
+
+	if err != nil {
+		log.Printf("worker: unable to mark messages active: %s", err)
+		return
+	}
+
+	if n > 0 {
+		log.Printf("worker: %d messages marked as active in %s", n, end.Sub(begin))
 	}
 }
 
@@ -279,6 +283,9 @@ func (w *Worker) releaseDispatcher(ctx context.Context) {
 
 			// we must wait for all active messages to be released.
 			wg.Wait()
+
+			// let markActiveWorker know we're done
+			w.releaseDone <- struct{}{}
 		}
 	}
 }
