@@ -5,6 +5,7 @@ import (
 	"context"
 	"log"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/cybozu-go/cmd"
@@ -259,6 +260,7 @@ func (w *Worker) releaseDispatcher(ctx context.Context) {
 
 			// we need QueueID to delete from the queue in the database
 			batchMap := BuildBatchMap(messages)
+			var wg sync.WaitGroup
 			for relayTo, batchMsgs := range batchMap {
 				for _, rms := range batchMsgs {
 					<-w.releaseSem
@@ -266,7 +268,9 @@ func (w *Worker) releaseDispatcher(ctx context.Context) {
 						relayTo:  relayTo,
 						messages: rms,
 					}
+					wg.Add(1)
 					go func(job *releaseJob) {
+						defer wg.Done()
 						w.release(job)
 						w.releaseSem <- struct{}{}
 					}(job)
@@ -274,6 +278,7 @@ func (w *Worker) releaseDispatcher(ctx context.Context) {
 			}
 
 			// we must wait for all active messages to be released.
+			wg.Wait()
 		}
 	}
 }
