@@ -180,6 +180,7 @@ func (d *pqDriver) AdoptOrphans() (int64, error) {
 }
 
 func (d *pqDriver) MarkActive(now time.Time) (int64, error) {
+	// we should have LIMIT to distribute the loads in the cluster
 	ret, err := d.db.Exec(`
 		INSERT
 		INTO
@@ -194,6 +195,7 @@ func (d *pqDriver) MarkActive(now time.Time) (int64, error) {
 			  SELECT 1 FROM active WHERE queue_id = queue.queue_id
 		  )
 		ORDER BY queue_id
+		LIMIT 1000
 	;`, d.workerID, now)
 	if err != nil {
 		return 0, err
