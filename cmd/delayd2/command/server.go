@@ -11,13 +11,11 @@ import (
 	"strings"
 	"time"
 
-	_ "net/http/pprof"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/cybozu-go/cmd"
-	"github.com/fukata/golang-stats-api-handler"
+	"github.com/google/gops/agent"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/nabeken/aws-go-sqs/queue"
 	"github.com/nabeken/delayd2"
@@ -31,8 +29,6 @@ type ServerConfig struct {
 	ShutdownDuration  int `envconfig:"shutdown_duration"`
 	NumConsumerFactor int `envconfig:"num_consumer_factor"`
 	NumRelayFactor    int `envconfig:"num_relay_factor"`
-
-	HTTPServer string
 
 	LeaveMessagesOrphanedAtShutdown bool
 }
@@ -50,20 +46,11 @@ func (c *ServerCommand) Run(args []string) int {
 	}
 
 	cmdFlags := flag.NewFlagSet("server", flag.ContinueOnError)
-	cmdFlags.StringVar(&config.HTTPServer, "http-server", "127.0.0.1:6060", "Listen HTTP request for pprof and stats on 127.0.0.1:6060")
 	cmdFlags.BoolVar(&config.LeaveMessagesOrphanedAtShutdown, "leave-messages-orphaned-at-shutdown", true, "leave messages orphaned at shutdown")
 
 	if err := cmdFlags.Parse(args); err != nil {
 		c.Ui.Error(c.Help())
 		return 1
-	}
-
-	if config.HTTPServer != "" {
-		http.HandleFunc("/_stats", stats_api.Handler)
-		log.Println("server: launching http server on ", config.HTTPServer)
-		go func() {
-			log.Println(http.ListenAndServe(config.HTTPServer, nil))
-		}()
 	}
 
 	// initialize configuration
@@ -125,8 +112,14 @@ func (c *ServerCommand) Run(args []string) int {
 	}
 
 	e := cmd.NewEnvironment(context.Background())
-
 	w := delayd2.NewWorker(e, workerConfig, drv, consumer, relay)
+
+	e.Go(func(ctx context.Context) error {
+		return agent.Listen(&agent.Options{
+			NoShutdownCleanup: true,
+		})
+		// we don't close the agent to diagnostic within shutdown procedures too
+	})
 
 	e.Go(func(ctx context.Context) error {
 		return w.Run()
