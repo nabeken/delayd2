@@ -25,7 +25,7 @@ type ServerCommand struct {
 }
 
 type ServerConfig struct {
-	WorkerID string `envconfi:"worker_id"`
+	WorkerID string `envconfig:"worker_id"`
 
 	DSN       string `envconfig:"dsn"`
 	QueueName string `envconfig:"queue_name"`
