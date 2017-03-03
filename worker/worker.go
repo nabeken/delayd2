@@ -33,8 +33,8 @@ type Worker struct {
 	releaseDone chan struct{}
 }
 
-// NewWorker creates a new worker.
-func NewWorker(e *cmd.Environment, driver database.Driver, consumer *queue.Consumer, relay *queue.Relay) *Worker {
+// New creates a new worker.
+func New(e *cmd.Environment, driver database.Driver, consumer *queue.Consumer, relay *queue.Relay) *Worker {
 	return &Worker{
 		env:      e,
 		driver:   driver,
