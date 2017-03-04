@@ -14,12 +14,19 @@ import (
 	"github.com/pmylund/go-cache"
 )
 
+type Config struct {
+	// The number of concurrency for queue access is determined by nCPU * QueueConcurrencyFactor.
+	QueueConcurrencyFactor int
+}
+
 // Worker is the delayd2 worker.
 type Worker struct {
 	env      *cmd.Environment
 	driver   database.Driver
 	consumer *queue.Consumer
 	relay    *queue.Relay
+
+	config *Config
 
 	succededIDsCache *cache.Cache
 
@@ -29,12 +36,14 @@ type Worker struct {
 }
 
 // New creates a new worker.
-func New(e *cmd.Environment, driver database.Driver, consumer *queue.Consumer, relay *queue.Relay) *Worker {
+func New(e *cmd.Environment, c *Config, driver database.Driver, consumer *queue.Consumer, relay *queue.Relay) *Worker {
 	return &Worker{
 		env:      e,
 		driver:   driver,
 		consumer: consumer,
 		relay:    relay,
+
+		config: c,
 
 		succededIDsCache: cache.New(15*time.Minute, 1*time.Minute),
 
@@ -64,16 +73,16 @@ func (w *Worker) Run() error {
 		return err
 	}
 
-	nCPU := runtime.NumCPU()
-	for i := 0; i < nCPU; i++ {
+	queueConcurrency := runtime.NumCPU() * w.config.QueueConcurrencyFactor
+	for i := 0; i < queueConcurrency; i++ {
 		log.Print("worker: launching consumer worker")
 		w.runWorker(w.consumeWorker)
 	}
 
 	// initializing a semaphore for release workers
 	log.Print("worker: initializing a semaphore for release workers")
-	w.releaseSem = make(chan struct{}, nCPU)
-	for i := 0; i < nCPU; i++ {
+	w.releaseSem = make(chan struct{}, queueConcurrency)
+	for i := 0; i < queueConcurrency; i++ {
 		w.releaseSem <- struct{}{}
 	}
 

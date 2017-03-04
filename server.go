@@ -27,6 +27,8 @@ type ServerCommand struct {
 type ServerConfig struct {
 	WorkerID string `envconfig:"worker_id"`
 
+	QueueConcurrencyFactor int `envconfig:"queue_concurrency_factor"`
+
 	DSN       string `envconfig:"dsn"`
 	QueueName string `envconfig:"queue_name"`
 
@@ -37,6 +39,10 @@ func (cmd *ServerCommand) Execute(args []string) error {
 	var config ServerConfig
 	if err := env.NewDecoder(env.System).Prefix("DELAYD2").Decode(&config); err != nil {
 		return errors.Wrap(err, "failed to load the configuration")
+	}
+
+	if config.QueueConcurrencyFactor == 0 {
+		config.QueueConcurrencyFactor = 1
 	}
 
 	if config.ShutdownDuration == 0 {
@@ -78,7 +84,10 @@ func (cmd *ServerCommand) Execute(args []string) error {
 	relay := queue.NewRelay(sqsSvc)
 
 	e := ccmd.NewEnvironment(context.Background())
-	w := worker.New(e, drv, consumer, relay)
+	c := &worker.Config{
+		QueueConcurrencyFactor: config.QueueConcurrencyFactor,
+	}
+	w := worker.New(e, c, drv, consumer, relay)
 
 	go func() {
 		agent.Listen(&agent.Options{NoShutdownCleanup: true})
