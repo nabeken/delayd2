@@ -54,6 +54,7 @@ func (w *Worker) runWorker(f func(ctx context.Context)) {
 func (w *Worker) Run() error {
 	log.Print("worker: registering delayd2 worker process")
 	if err := w.driver.RegisterSession(); err != nil {
+		log.Print("worker: unable to register worker process")
 		return err
 	}
 
