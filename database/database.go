@@ -15,6 +15,7 @@ type Message struct {
 // Driver represents the interface for database implementation.
 type Driver interface {
 	RegisterSession() error
+	RemoveDeadSession() error
 	DeregisterSession() error
 	KeepAliveSession() error
 

@@ -52,6 +52,12 @@ func (w *Worker) runWorker(f func(ctx context.Context)) {
 
 // Run starts the worker process. It is not blocked.
 func (w *Worker) Run() error {
+	log.Print("worker: removing dead session if exists")
+	if err := w.driver.RemoveDeadSession(); err != nil {
+		log.Print("worker: unable to remove dead session")
+		return err
+	}
+
 	log.Print("worker: registering delayd2 worker process")
 	if err := w.driver.RegisterSession(); err != nil {
 		log.Print("worker: unable to register worker process")

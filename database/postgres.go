@@ -59,6 +59,18 @@ type postgresDriver struct {
 	db       *sql.DB
 }
 
+func (d *postgresDriver) RemoveDeadSession() error {
+	_, err := d.db.Exec(`
+		DELETE
+		FROM
+		  session
+		WHERE
+		      worker_id = $1
+		  AND keepalived_at < now() - interval '1 minute'
+	;`, d.workerID)
+	return pqErrorOrElse(err)
+}
+
 func (d *postgresDriver) RegisterSession() error {
 	keepAlivedAt := time.Now()
 	_, err := d.db.Exec(`
