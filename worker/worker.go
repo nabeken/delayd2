@@ -17,6 +17,8 @@ import (
 type Config struct {
 	// The number of concurrency for queue access is determined by nCPU * QueueConcurrencyFactor.
 	QueueConcurrencyFactor int
+	// The number of concurrency for relay is determined by nCPU * QueueConcurrencyFactor.
+	RelayConcurrencyFactor int
 }
 
 // Worker is the delayd2 worker.
@@ -81,8 +83,9 @@ func (w *Worker) Run() error {
 
 	// initializing a semaphore for release workers
 	log.Print("worker: initializing a semaphore for release workers")
-	w.releaseSem = make(chan struct{}, queueConcurrency)
-	for i := 0; i < queueConcurrency; i++ {
+	relayConcurrency := runtime.NumCPU() * w.config.RelayConcurrencyFactor
+	w.releaseSem = make(chan struct{}, relayConcurrency)
+	for i := 0; i < relayConcurrency; i++ {
 		w.releaseSem <- struct{}{}
 	}
 

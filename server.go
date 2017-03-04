@@ -28,6 +28,7 @@ type ServerConfig struct {
 	WorkerID string `envconfig:"worker_id"`
 
 	QueueConcurrencyFactor int `envconfig:"queue_concurrency_factor"`
+	RelayConcurrencyFactor int `envconfig:"relay_concurrency_factor"`
 
 	DSN       string `envconfig:"dsn"`
 	QueueName string `envconfig:"queue_name"`
@@ -43,6 +44,9 @@ func (cmd *ServerCommand) Execute(args []string) error {
 
 	if config.QueueConcurrencyFactor == 0 {
 		config.QueueConcurrencyFactor = 1
+	}
+	if config.RelayConcurrencyFactor == 0 {
+		config.RelayConcurrencyFactor = 1
 	}
 
 	if config.ShutdownDuration == 0 {
@@ -86,6 +90,7 @@ func (cmd *ServerCommand) Execute(args []string) error {
 	e := ccmd.NewEnvironment(context.Background())
 	c := &worker.Config{
 		QueueConcurrencyFactor: config.QueueConcurrencyFactor,
+		RelayConcurrencyFactor: config.RelayConcurrencyFactor,
 	}
 	w := worker.New(e, c, drv, consumer, relay)
 
