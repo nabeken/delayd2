@@ -85,10 +85,10 @@ func (cmd *ServerCommand) Execute(args []string) error {
 		// we don't close the agent to diagnostic within shutdown procedures too
 	}()
 
-	e.Go(func(_ context.Context) error {
-		log.Println("delayd2: starting the server...")
-		return w.Run()
-	})
+	log.Println("delayd2: starting the server...")
+	if err := w.Run(); err != nil {
+		return errors.Wrap(err, "unable to launch the server")
+	}
 
 	// wait for signals
 	ccmd.Go(func(ctx context.Context) error {
