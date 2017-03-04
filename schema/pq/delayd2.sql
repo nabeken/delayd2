@@ -21,4 +21,5 @@ CREATE TABLE active (
  , begin_at   TIMESTAMP WITH TIME ZONE DEFAULT now()
 
  , FOREIGN KEY (queue_id) REFERENCES queue (queue_id) ON DELETE CASCADE
+ , FOREIGN KEY (worker_id) REFERENCES session (worker_id) ON DELETE CASCADE
 );
