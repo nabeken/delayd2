@@ -86,6 +86,7 @@ func (cmd *ServerCommand) Execute(args []string) error {
 	}()
 
 	e.Go(func(_ context.Context) error {
+		log.Println("delayd2: starting the server...")
 		return w.Run()
 	})
 

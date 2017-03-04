@@ -14,11 +14,6 @@ import (
 	"github.com/pmylund/go-cache"
 )
 
-type releaseJob struct {
-	relayTo  string
-	messages []releaseMessage
-}
-
 // Worker is the delayd2 worker.
 type Worker struct {
 	env      *cmd.Environment
@@ -186,6 +181,11 @@ func (w *Worker) markActive() {
 	if n > 0 {
 		log.Printf("worker: %d messages marked as active in %s", n, end.Sub(begin))
 	}
+}
+
+type releaseJob struct {
+	relayTo  string
+	messages []releaseMessage
 }
 
 // releaseDispatcher dispatches relay jobs to release workers.
