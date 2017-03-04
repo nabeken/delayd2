@@ -105,9 +105,10 @@ func (cmd *ServerCommand) Execute(args []string) error {
 		return err
 	})
 
-	err = ccmd.Wait()
+	// wait for all delayd2 goroutine to be done
+	err = e.Wait()
 	if err != nil && !ccmd.IsSignaled(err) {
-		return errors.Wrap(err, "unable to shutdown properly")
+		return errors.Wrap(err, "unable to launch or shutdown properly")
 	}
 
 	log.Printf("delayd2: shutdown completed")
