@@ -69,7 +69,7 @@ DELETE
 FROM
   queue
 WHERE
-  queue_id IN ('queue-1', 'queue-2', 'queue-3')
+  queue_id = ANY(ARRAY['queue-1', 'queue-2', 'queue-3'])
 ;
 ```
 
