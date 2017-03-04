@@ -61,10 +61,16 @@ func TestDriver(t *testing.T) {
 		workerID: "testing-1",
 		db:       newTestDriver(),
 	}
+	defer drv1.DeregisterSession()
+	require.NoError(drv1.RegisterSession())
+
 	drv2 := &postgresDriver{
 		workerID: "testing-2",
 		db:       newTestDriver(),
 	}
+	require.NoError(drv2.RegisterSession())
+	defer drv2.DeregisterSession()
+
 	defer drv1.db.Exec("DELETE FROM queue;")
 
 	testCases := map[string]struct {
