@@ -181,6 +181,19 @@ func (w *Worker) markActiveWorker(ctx context.Context) {
 		case <-time.Tick(1 * time.Second):
 			w.markActive()
 		case <-ctx.Done():
+			log.Print("worker: preparing for shutting down marking worker")
+			goto SHUTDOWN
+		}
+	}
+
+SHUTDOWN:
+
+	// if releaseDispatcher is ongoing, we have to consume releaseDone until it's done
+	for {
+		_, ok := <-w.releaseDone
+		if ok {
+			w.markActive()
+		} else {
 			log.Print("worker: shutting down marking worker")
 			return
 		}
@@ -213,6 +226,7 @@ func (w *Worker) releaseDispatcher(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			log.Print("worker: shutting down release dispatcher")
+			close(w.releaseDone)
 			return
 		case <-time.Tick(10 * time.Millisecond):
 			messages, err := w.driver.GetActiveMessages()
