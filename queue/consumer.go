@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"errors"
 	"log"
 	"strconv"
@@ -35,7 +36,7 @@ func NewConsumer(workerID string, driver database.Driver, queue *queue.Queue) *C
 
 // ConsumeMessages consumes messages in SQS queue.
 // It returns the number of consumed message in success.
-func (c *Consumer) ConsumeMessages() (int64, error) {
+func (c *Consumer) ConsumeMessages(ctx context.Context) (int64, error) {
 	messages, err := c.queue.ReceiveMessage(
 		option.MaxNumberOfMessages(10),
 		option.UseAllAttribute(),
@@ -54,7 +55,7 @@ func (c *Consumer) ConsumeMessages() (int64, error) {
 			continue
 		}
 
-		err = c.driver.Enqueue(*m.MessageId, duration, relayTo, *m.Body)
+		err = c.driver.Enqueue(ctx, *m.MessageId, duration, relayTo, *m.Body)
 		if err != nil {
 			if database.IsConflictError(err) {
 				// delete immediately if duplicated

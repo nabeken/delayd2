@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"database/sql/driver"
 	"net"
@@ -59,8 +60,8 @@ type postgresDriver struct {
 	db       *sql.DB
 }
 
-func (d *postgresDriver) RemoveDeadSession() error {
-	_, err := d.db.Exec(`
+func (d *postgresDriver) RemoveDeadSession(ctx context.Context) error {
+	_, err := d.db.ExecContext(ctx, `
 		DELETE
 		FROM
 		  session
@@ -71,9 +72,9 @@ func (d *postgresDriver) RemoveDeadSession() error {
 	return pqErrorOrElse(err)
 }
 
-func (d *postgresDriver) RegisterSession() error {
+func (d *postgresDriver) RegisterSession(ctx context.Context) error {
 	keepAlivedAt := time.Now()
-	_, err := d.db.Exec(`
+	_, err := d.db.ExecContext(ctx, `
 		INSERT
 		INTO
 		  session
@@ -84,8 +85,8 @@ func (d *postgresDriver) RegisterSession() error {
 	return pqErrorOrElse(err)
 }
 
-func (d *postgresDriver) DeregisterSession() error {
-	_, err := d.db.Exec(`
+func (d *postgresDriver) DeregisterSession(ctx context.Context) error {
+	_, err := d.db.ExecContext(ctx, `
 		DELETE
 		FROM
 		  session
@@ -95,9 +96,9 @@ func (d *postgresDriver) DeregisterSession() error {
 	return pqErrorOrElse(err)
 }
 
-func (d *postgresDriver) KeepAliveSession() error {
+func (d *postgresDriver) KeepAliveSession(ctx context.Context) error {
 	keepAlivedAt := time.Now()
-	_, err := d.db.Exec(`
+	_, err := d.db.ExecContext(ctx, `
 		UPDATE session
 		SET
 		  keepalived_at = $1
@@ -107,9 +108,9 @@ func (d *postgresDriver) KeepAliveSession() error {
 	return pqErrorOrElse(err)
 }
 
-func (d *postgresDriver) Enqueue(queueId string, delay int64, relayTo string, payload string) error {
+func (d *postgresDriver) Enqueue(ctx context.Context, queueId string, delay int64, relayTo string, payload string) error {
 	releaseAt := time.Now().Add(time.Duration(delay) * time.Second)
-	_, err := d.db.Exec(`
+	_, err := d.db.ExecContext(ctx, `
 		INSERT
 		INTO
 		  queue
@@ -120,8 +121,8 @@ func (d *postgresDriver) Enqueue(queueId string, delay int64, relayTo string, pa
 	return pqErrorOrElse(err)
 }
 
-func (d *postgresDriver) ResetActive() (int64, error) {
-	ret, err := d.db.Exec(`
+func (d *postgresDriver) ResetActive(ctx context.Context) (int64, error) {
+	ret, err := d.db.ExecContext(ctx, `
 		DELETE
 		FROM
 		  active
@@ -135,8 +136,8 @@ func (d *postgresDriver) ResetActive() (int64, error) {
 	return ret.RowsAffected()
 }
 
-func (d *postgresDriver) MarkActive(now time.Time) (int64, error) {
-	ret, err := d.db.Exec(`
+func (d *postgresDriver) MarkActive(ctx context.Context, now time.Time) (int64, error) {
+	ret, err := d.db.ExecContext(ctx, `
 		INSERT
 		INTO
 		  active
@@ -157,13 +158,13 @@ func (d *postgresDriver) MarkActive(now time.Time) (int64, error) {
 	return ret.RowsAffected()
 }
 
-func (d *postgresDriver) RemoveMessages(queueIDs ...string) error {
+func (d *postgresDriver) RemoveMessages(ctx context.Context, queueIDs ...string) error {
 	ids := make([]interface{}, len(queueIDs))
 	for i := range queueIDs {
 		ids[i] = queueIDs[i]
 	}
 
-	_, err := d.db.Exec(`
+	_, err := d.db.ExecContext(ctx, `
 		DELETE
 		FROM
 			queue
@@ -173,8 +174,8 @@ func (d *postgresDriver) RemoveMessages(queueIDs ...string) error {
 	return err
 }
 
-func (d *postgresDriver) GetActiveMessages() ([]*Message, error) {
-	rows, err := d.db.Query(`
+func (d *postgresDriver) GetActiveMessages(ctx context.Context) ([]*Message, error) {
+	rows, err := d.db.QueryContext(ctx, `
 		SELECT queue.queue_id, queue.worker_id, queue.release_at, queue.relay_to, queue.payload
 		FROM
 		  queue INNER JOIN active USING (queue_id)

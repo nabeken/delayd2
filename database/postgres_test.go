@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 	"time"
@@ -20,20 +21,21 @@ func TestDriverSession(t *testing.T) {
 	}
 	defer drv.db.Exec("DELETE FROM session;")
 
+	ctx := context.TODO()
 	{
 		// No error even if there is no session
-		require.NoError(drv.DeregisterSession())
+		require.NoError(drv.DeregisterSession(ctx))
 	}
 
 	{
-		require.NoError(drv.RegisterSession())
-		err := drv.RegisterSession()
+		require.NoError(drv.RegisterSession(ctx))
+		err := drv.RegisterSession(ctx)
 		require.Error(err)
 		require.True(IsConflictError(err))
 
 		// deregister and re-register
-		require.NoError(drv.DeregisterSession())
-		require.NoError(drv.RegisterSession())
+		require.NoError(drv.DeregisterSession(ctx))
+		require.NoError(drv.RegisterSession(ctx))
 	}
 
 	{
@@ -45,7 +47,7 @@ func TestDriverSession(t *testing.T) {
 		require.NoError(err)
 
 		var now time.Time
-		require.NoError(drv.KeepAliveSession())
+		require.NoError(drv.KeepAliveSession(ctx))
 		err = drv.db.QueryRow(
 			"SELECT keepalived_at FROM session WHERE worker_id = $1", drv.workerID).
 			Scan(&now)
@@ -57,19 +59,20 @@ func TestDriverSession(t *testing.T) {
 func TestDriver(t *testing.T) {
 	require := require.New(t)
 
+	ctx := context.TODO()
 	drv1 := &postgresDriver{
 		workerID: "testing-1",
 		db:       newTestDriver(),
 	}
-	defer drv1.DeregisterSession()
-	require.NoError(drv1.RegisterSession())
+	defer drv1.DeregisterSession(ctx)
+	require.NoError(drv1.RegisterSession(ctx))
 
 	drv2 := &postgresDriver{
 		workerID: "testing-2",
 		db:       newTestDriver(),
 	}
-	require.NoError(drv2.RegisterSession())
-	defer drv2.DeregisterSession()
+	require.NoError(drv2.RegisterSession(ctx))
+	defer drv2.DeregisterSession(ctx)
 
 	defer drv1.db.Exec("DELETE FROM queue;")
 
@@ -117,26 +120,26 @@ func TestDriver(t *testing.T) {
 		now := time.Now()
 		drv := tc.Driver
 		for _, m := range tc.Messages {
-			require.NoError(drv.Enqueue(m.ID, 60, m.RelayTo, m.Payload))
+			require.NoError(drv.Enqueue(ctx, m.ID, 60, m.RelayTo, m.Payload))
 		}
 
-		n, err := drv.MarkActive(now.Add(3 * time.Minute))
+		n, err := drv.MarkActive(ctx, now.Add(3*time.Minute))
 		require.NoError(err)
 		require.Equal(int64(2), n)
 
-		n, err = drv.MarkActive(now.Add(3 * time.Minute))
+		n, err = drv.MarkActive(ctx, now.Add(3*time.Minute))
 		require.NoError(err)
 		require.Equal(int64(0), n)
 
-		n, err = drv.ResetActive()
+		n, err = drv.ResetActive(ctx)
 		require.NoError(err)
 		require.Equal(int64(2), n)
 
-		n, err = drv.MarkActive(now.Add(3 * time.Minute))
+		n, err = drv.MarkActive(ctx, now.Add(3*time.Minute))
 		require.NoError(err)
 		require.Equal(int64(2), n)
 
-		messages, err := drv.GetActiveMessages()
+		messages, err := drv.GetActiveMessages(ctx)
 		require.NoError(err)
 		require.Len(messages, 2)
 
@@ -154,9 +157,9 @@ func TestDriver(t *testing.T) {
 			ids = append(ids, messages[i].ID)
 		}
 
-		require.NoError(drv.RemoveMessages(ids...))
+		require.NoError(drv.RemoveMessages(ctx, ids...))
 
-		n, err = drv.MarkActive(now.Add(1 * time.Minute))
+		n, err = drv.MarkActive(ctx, now.Add(1*time.Minute))
 		require.NoError(err)
 		require.Equal(int64(0), n)
 	}

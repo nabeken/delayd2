@@ -1,7 +1,10 @@
 // Package database provides the implementation for the database driver.
 package database
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // Message is the message queued in the database.
 type Message struct {
@@ -14,15 +17,15 @@ type Message struct {
 
 // Driver represents the interface for database implementation.
 type Driver interface {
-	RegisterSession() error
-	RemoveDeadSession() error
-	DeregisterSession() error
-	KeepAliveSession() error
+	RegisterSession(context.Context) error
+	RemoveDeadSession(context.Context) error
+	DeregisterSession(context.Context) error
+	KeepAliveSession(context.Context) error
 
-	Enqueue(string, int64, string, string) error
-	RemoveMessages(...string) error
+	Enqueue(context.Context, string, int64, string, string) error
+	RemoveMessages(context.Context, ...string) error
 
-	GetActiveMessages() ([]*Message, error)
-	MarkActive(time.Time) (int64, error)
-	ResetActive() (int64, error)
+	GetActiveMessages(context.Context) ([]*Message, error)
+	MarkActive(context.Context, time.Time) (int64, error)
+	ResetActive(context.Context) (int64, error)
 }

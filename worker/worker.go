@@ -63,14 +63,17 @@ func (w *Worker) runWorker(f func(ctx context.Context)) {
 
 // Run starts the worker process. It is not blocked.
 func (w *Worker) Run() error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
 	log.Print("worker: removing dead session if exists")
-	if err := w.driver.RemoveDeadSession(); err != nil {
+	if err := w.driver.RemoveDeadSession(ctx); err != nil {
 		log.Print("worker: unable to remove dead session")
 		return err
 	}
 
 	log.Print("worker: registering delayd2 worker process")
-	if err := w.driver.RegisterSession(); err != nil {
+	if err := w.driver.RegisterSession(ctx); err != nil {
 		log.Print("worker: unable to register worker process")
 		return err
 	}
@@ -110,12 +113,12 @@ func (w *Worker) Shutdown(ctx context.Context) error {
 		}
 
 		log.Print("worker: resetting aborted messages remaining in active queue")
-		if _, err := w.driver.ResetActive(); err != nil {
+		if _, err := w.driver.ResetActive(ctx); err != nil {
 			log.Print("worker: unable to reset messages in active queue:", err)
 		}
 
 		log.Print("worker: deregistering delayd2 worker process")
-		if err := w.driver.DeregisterSession(); err != nil {
+		if err := w.driver.DeregisterSession(ctx); err != nil {
 			log.Print("worker: unable to deregister session:", err)
 		}
 
@@ -137,7 +140,7 @@ func (w *Worker) keepAliveWorker(ctx context.Context) {
 	for {
 		select {
 		case <-time.Tick(1 * time.Second):
-			if err := w.driver.KeepAliveSession(); err != nil {
+			if err := w.driver.KeepAliveSession(ctx); err != nil {
 				log.Printf("worker: unable to keep alived: %s", err)
 			}
 		case <-ctx.Done():
@@ -158,7 +161,7 @@ func (w *Worker) consumeWorker(ctx context.Context) {
 		}
 
 		begin := time.Now()
-		n, err := w.consumer.ConsumeMessages()
+		n, err := w.consumer.ConsumeMessages(ctx)
 		end := time.Now()
 
 		if err != nil {
@@ -177,9 +180,9 @@ func (w *Worker) markActiveWorker(ctx context.Context) {
 	for {
 		select {
 		case <-w.releaseDone:
-			w.markActive()
+			w.markActive(ctx)
 		case <-time.Tick(1 * time.Second):
-			w.markActive()
+			w.markActive(ctx)
 		case <-ctx.Done():
 			log.Print("worker: preparing for shutting down marking worker")
 			goto SHUTDOWN
@@ -192,7 +195,7 @@ SHUTDOWN:
 	for {
 		_, ok := <-w.releaseDone
 		if ok {
-			w.markActive()
+			w.markActive(ctx)
 		} else {
 			log.Print("worker: shutting down marking worker")
 			return
@@ -200,9 +203,9 @@ SHUTDOWN:
 	}
 }
 
-func (w *Worker) markActive() {
+func (w *Worker) markActive(ctx context.Context) {
 	begin := time.Now().Truncate(time.Second)
-	n, err := w.driver.MarkActive(begin)
+	n, err := w.driver.MarkActive(ctx, begin)
 	end := time.Now()
 
 	if err != nil {
@@ -229,7 +232,7 @@ func (w *Worker) releaseDispatcher(ctx context.Context) {
 			close(w.releaseDone)
 			return
 		case <-time.Tick(10 * time.Millisecond):
-			messages, err := w.driver.GetActiveMessages()
+			messages, err := w.driver.GetActiveMessages(ctx)
 			if err != nil {
 				log.Printf("worker: unable to get active messages: %s", err)
 				continue
@@ -252,7 +255,7 @@ func (w *Worker) releaseDispatcher(ctx context.Context) {
 					wg.Add(1)
 					go func(job *releaseJob) {
 						defer wg.Done()
-						w.release(job)
+						w.release(ctx, job)
 						w.releaseSem <- struct{}{}
 					}(job)
 				}
@@ -272,7 +275,7 @@ type releaseMessage struct {
 	Payload string
 }
 
-func (w *Worker) release(job *releaseJob) {
+func (w *Worker) release(ctx context.Context, job *releaseJob) {
 	payloads := make([]string, 0, len(job.messages))
 	for _, m := range job.messages {
 		if _, found := w.succededIDsCache.Get(m.QueueID); found {
@@ -280,7 +283,7 @@ func (w *Worker) release(job *releaseJob) {
 			// but we need to try to remove it from the database
 			log.Printf("worker: %s is in the cache so continueing...", m.QueueID)
 
-			if err := w.removeMessages(m.QueueID); err != nil {
+			if err := w.removeMessages(ctx, m.QueueID); err != nil {
 				log.Printf("worker: unable to remove %s in the database but continue.", m.QueueID)
 			} else {
 				log.Printf("worker: %s has been removed in the database.", m.QueueID)
@@ -322,7 +325,7 @@ func (w *Worker) release(job *releaseJob) {
 	}
 
 	var n int64
-	if err := w.removeMessages(succededIDs...); err != nil {
+	if err := w.removeMessages(ctx, succededIDs...); err != nil {
 		log.Printf("worker: unable to remove messages from the database: %s", err)
 	} else {
 		n += int64(len(succededIDs))
@@ -330,8 +333,8 @@ func (w *Worker) release(job *releaseJob) {
 	log.Printf("worker: %d messages removed from the database", n)
 }
 
-func (w *Worker) removeMessages(ids ...string) error {
-	if err := w.driver.RemoveMessages(ids...); err != nil {
+func (w *Worker) removeMessages(ctx context.Context, ids ...string) error {
+	if err := w.driver.RemoveMessages(ctx, ids...); err != nil {
 		return err
 	}
 
@@ -362,7 +365,7 @@ func (w *Worker) removeOngoingMessages(ctx context.Context) error {
 			ids = append(ids, id)
 		}
 
-		if err := w.removeMessages(ids...); err != nil {
+		if err := w.removeMessages(ctx, ids...); err != nil {
 			log.Printf("worker: unable to remove from the database. retrying...")
 			time.Sleep(1 * time.Second)
 		}
