@@ -28,10 +28,10 @@ func (m *Manager) Run(ctx context.Context) {
 			n, err := m.qservice.MarkActive(ctx, begin)
 			end := time.Now()
 			if err != nil {
-				log.Print("manager: unable to move to active queue")
+				log.Printf("manager: unable to move to active queue: %s", err)
 			}
 			if n > 0 {
-				log.Printf("worker: %d messages marked as active in %s", n, end.Sub(begin))
+				log.Printf("manager: %d messages marked as active in %s", n, end.Sub(begin))
 			}
 		}
 	}
