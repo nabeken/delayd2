@@ -142,9 +142,11 @@ func (w *Worker) keepAliveWorker(ctx context.Context) {
 	for {
 		select {
 		case <-time.Tick(1 * time.Second):
-			if err := w.driver.KeepAliveSession(ctx); err != nil {
+			dctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			if err := w.driver.KeepAliveSession(dctx); err != nil {
 				log.Printf("worker: unable to keep alived: %s", err)
 			}
+			cancel()
 		case <-ctx.Done():
 			log.Print("worker: shutting down keepalive worker")
 			return
