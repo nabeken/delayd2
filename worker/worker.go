@@ -87,7 +87,6 @@ func (w *Worker) Run() error {
 	w.runWorker(w.keepAliveWorker)
 	w.runWorker(w.dispatcher.Run)
 	w.runWorker(w.manager.Run)
-	w.runWorker(w.dispatcher.Run)
 
 	log.Print("worker: started delayd2 process")
 
