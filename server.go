@@ -84,7 +84,8 @@ func (cmd *ServerCommand) Execute(args []string) error {
 		return errors.Wrap(err, "unable to initialize SQS connection")
 	}
 
-	consumer := queue.NewConsumer(config.WorkerID, drv, q)
+	qs := queue.NewService(drv)
+	consumer := queue.NewConsumer(qs, q)
 	relay := queue.NewRelay(sqsSvc)
 
 	e := ccmd.NewEnvironment(context.Background())
@@ -92,7 +93,7 @@ func (cmd *ServerCommand) Execute(args []string) error {
 		QueueConcurrencyFactor: config.QueueConcurrencyFactor,
 		RelayConcurrencyFactor: config.RelayConcurrencyFactor,
 	}
-	w := worker.New(e, c, drv, consumer, relay)
+	w := worker.New(e, c, drv, consumer, relay, qs)
 
 	go func() {
 		agent.Listen(&agent.Options{NoShutdownCleanup: true})
@@ -114,8 +115,8 @@ func (cmd *ServerCommand) Execute(args []string) error {
 
 		// we should wait for config.ShutdownDuration seconds.
 		ctx, cancel := context.WithTimeout(context.Background(), duration)
+		defer cancel()
 		err = w.Shutdown(ctx)
-		cancel()
 		return err
 	})
 

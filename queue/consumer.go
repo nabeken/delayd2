@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"strconv"
+	"time"
 
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/nabeken/aws-go-sqs/queue"
@@ -21,16 +22,39 @@ const (
 
 // Consumer represents a SQS message consumer.
 type Consumer struct {
-	workerID string
-	driver   database.Driver
+	qservice *Service
 	queue    *queue.Queue
 }
 
-func NewConsumer(workerID string, driver database.Driver, queue *queue.Queue) *Consumer {
+func NewConsumer(qs *Service, queue *queue.Queue) *Consumer {
 	return &Consumer{
-		workerID: workerID,
-		driver:   driver,
+		qservice: qs,
 		queue:    queue,
+	}
+}
+
+// Run consumes messages in SQS.
+func (c *Consumer) Run(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			log.Print("consumer: shutting down the consumer worker")
+			return
+		default:
+		}
+
+		begin := time.Now()
+		n, err := c.ConsumeMessages(ctx)
+		end := time.Now()
+
+		if err != nil {
+			log.Printf("consumer: unable to consume messages: %s", err)
+			continue
+		}
+
+		if n > 0 {
+			log.Printf("consumer: %d messages consumed in %s", n, end.Sub(begin))
+		}
 	}
 }
 
@@ -55,7 +79,7 @@ func (c *Consumer) ConsumeMessages(ctx context.Context) (int64, error) {
 			continue
 		}
 
-		err = c.driver.Enqueue(ctx, *m.MessageId, duration, relayTo, *m.Body)
+		err = c.qservice.Enqueue(ctx, *m.MessageId, duration, relayTo, *m.Body)
 		if err != nil {
 			if database.IsConflictError(err) {
 				// delete immediately if duplicated
