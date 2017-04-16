@@ -1,15 +1,15 @@
-package delayd2
+package queue
 
 import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sqs"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExtractDelayd2MessageAttributes(t *testing.T) {
-	assert := assert.New(t)
+	require := require.New(t)
 
 	expectedDuration := int64(60)
 	expectedRelayTo := "relay-to"
@@ -71,11 +71,11 @@ func TestExtractDelayd2MessageAttributes(t *testing.T) {
 			MessageAttributes: tc.Messages,
 		})
 		if tc.IsErr {
-			assert.Equal(ErrInvalidAttributes, err, "#%d failed", i+1)
+			require.Equal(errInvalidAttributes, err, "#%d failed", i+1)
 		} else {
-			assert.NoError(err, "#%d failed", i+1)
-			assert.Equal(expectedDuration, duration, "#%d failed", i+1)
-			assert.Equal(expectedRelayTo, relayTo, "#%d failed", i+1)
+			require.NoError(err, "#%d failed", i+1)
+			require.Equal(expectedDuration, duration, "#%d failed", i+1)
+			require.Equal(expectedRelayTo, relayTo, "#%d failed", i+1)
 		}
 	}
 }

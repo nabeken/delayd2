@@ -1,4 +1,4 @@
-package delayd2
+package queue
 
 import (
 	"log"
@@ -7,6 +7,7 @@ import (
 	"github.com/nabeken/aws-go-sqs/queue/option"
 )
 
+// Sender is the bulk sender implementation especially for testing.
 type Sender struct {
 	queue *queue.Queue
 }

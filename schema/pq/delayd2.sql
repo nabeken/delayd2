@@ -11,8 +11,12 @@ CREATE TABLE queue (
  , payload    TEXT NOT NULL
 );
 
-CREATE INDEX queue_index ON queue (
-  worker_id, release_at
+CREATE INDEX queue_worker_index ON queue (
+  worker_id
+);
+
+CREATE INDEX queue_worker_release_at ON queue (
+  release_at
 );
 
 CREATE TABLE active (
@@ -21,4 +25,9 @@ CREATE TABLE active (
  , begin_at   TIMESTAMP WITH TIME ZONE DEFAULT now()
 
  , FOREIGN KEY (queue_id) REFERENCES queue (queue_id) ON DELETE CASCADE
+ , FOREIGN KEY (worker_id) REFERENCES session (worker_id) ON DELETE CASCADE
+);
+
+CREATE INDEX active_worker_id ON queue (
+  worker_id
 );
