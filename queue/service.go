@@ -23,7 +23,10 @@ func NewService(driver database.Driver) *Service {
 }
 
 func (s *Service) RemoveMessages(ctx context.Context, ids ...string) error {
-	if err := s.driver.RemoveMessages(ctx, ids...); err != nil {
+	dctx, cancel := s.databaseContext(ctx)
+	defer cancel()
+
+	if err := s.driver.RemoveMessages(dctx, ids...); err != nil {
 		return err
 	}
 
@@ -37,19 +40,27 @@ func (s *Service) RemoveMessages(ctx context.Context, ids ...string) error {
 }
 
 func (s *Service) GetActiveMessages(ctx context.Context) ([]*database.Message, error) {
-	return s.driver.GetActiveMessages(ctx)
+	dctx, cancel := s.databaseContext(ctx)
+	defer cancel()
+	return s.driver.GetActiveMessages(dctx)
 }
 
 func (s *Service) ResetActive(ctx context.Context) (int64, error) {
-	return s.driver.ResetActive(ctx)
+	dctx, cancel := s.databaseContext(ctx)
+	defer cancel()
+	return s.driver.ResetActive(dctx)
 }
 
 func (s *Service) MarkActive(ctx context.Context, begin time.Time) (int64, error) {
-	return s.driver.MarkActive(ctx, begin)
+	dctx, cancel := s.databaseContext(ctx)
+	defer cancel()
+	return s.driver.MarkActive(dctx, begin)
 }
 
 func (s *Service) Enqueue(ctx context.Context, queueID string, duration int64, relayTo, body string) error {
-	return s.driver.Enqueue(ctx, queueID, duration, relayTo, body)
+	dctx, cancel := s.databaseContext(ctx)
+	defer cancel()
+	return s.driver.Enqueue(dctx, queueID, duration, relayTo, body)
 }
 
 func (s *Service) MarkMessgeDone(queueID string) {
@@ -91,4 +102,8 @@ func (s *Service) RemoveOngoingMessages(ctx context.Context) error {
 		default:
 		}
 	}
+}
+
+func (s *Service) databaseContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, time.Minute)
 }
