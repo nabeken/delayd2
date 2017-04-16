@@ -24,9 +24,8 @@ func (m *Manager) Run(ctx context.Context) {
 			log.Print("manager: shutting down the queue manager worker")
 			return
 		case <-time.Tick(100 * time.Millisecond):
-			dctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			begin := time.Now().Truncate(time.Second)
-			n, err := m.qservice.MarkActive(dctx, begin)
+			n, err := m.qservice.MarkActive(ctx, begin)
 			end := time.Now()
 			if err != nil {
 				log.Print("manager: unable to move to active queue")
@@ -34,7 +33,6 @@ func (m *Manager) Run(ctx context.Context) {
 			if n > 0 {
 				log.Printf("worker: %d messages marked as active in %s", n, end.Sub(begin))
 			}
-			cancel()
 		}
 	}
 }
